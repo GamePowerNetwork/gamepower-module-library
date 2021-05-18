@@ -1,0 +1,42 @@
+[package]
+name = "gamepower-wallet"
+description = "Pallet that allows interfacing with the GamePower NFT Wallet"
+repository = "https://github.com/GamePowerNetwork/gamepower-module-library/tree/main/wallet"
+license = "Apache-2.0"
+version = "0.0.1"
+authors = ["GamePower Developers <dev@gamepower.network>"]
+edition = "2018"
+
+[package.metadata.docs.rs]
+targets = ['x86_64-unknown-linux-gnu']
+
+[dependencies]
+serde = { version = "1.0.111", optional = true }
+codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
+frame-support = { version = "3.0.0", default-features = false }
+frame-system = { version = "3.0.0", default-features = false }
+sp-io = { version = "3.0.0", default-features = false }
+sp-core = { version = "3.0.0", default-features = false }
+sp-runtime = { version = "3.0.0", default-features = false }
+sp-std = { version = "3.0.0", default-features = false }
+
+gamepower-traits = { default-features = false, path = '../traits' }
+
+# Orml packages
+orml-nft = { default-features = false, version = '0.4.0' }
+
+
+[features]
+default = ['std']
+std = [
+    'serde',
+    'codec/std',
+    'frame-support/std',
+    'frame-system/std',
+    'sp-runtime/std',
+    'sp-core/std',
+    'sp-io/std',
+    'sp-std/std',
+    'gamepower-traits/std',
+    'orml-nft/std',
+]
