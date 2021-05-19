@@ -50,6 +50,8 @@ decl_module! {
     pub struct Module<T: Config> for enum Call where origin: T::Origin {
 
       const TransferPermission: bool = T::TransferPermission::get();
+      const BurnPermission: bool = T::BurnPermission::get();
+      const MarketPermission: bool = T:MarketPermission::get();
 
       #[weight = 10_000]
         pub fn transfer(origin, name: Vec<u8>, properties: Vec<u8>) -> DispatchResult{
