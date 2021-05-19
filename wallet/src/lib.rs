@@ -19,15 +19,17 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 use codec::{Decode, Encode};
 use frame_support::{
-  decl_error, decl_event, decl_module, decl_storage, ensure, Parameter,
-  traits::{Get},
+  decl_module, decl_storage,
+  traits::{Currency, Get, ReservableCurrency},
+  Parameter,
 };
 use frame_system::{self as system, ensure_signed};
 use sp_runtime::{
-    traits::{AtLeast32Bit, One, StaticLookup, Zero},
-    DispatchError, DispatchResult,
+  traits::{AtLeast32BitUnsigned, Member},
+    DispatchResult, ModuleId, RuntimeDebug,
 };
 use sp_std::vec::Vec;
+use orml_nft::Pallet as NftModule;
 use gamepower_traits::*;
 
 #[cfg(test)]
@@ -36,30 +38,115 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+type Token = u64;
+type Class = u128;
+type Price = u128;
+
+#[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct Listing<AccountId> {
+    pub asset: (Class, Token),
+    pub seller: AccountId,
+    pub price: Price,
+}
+
+#[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct Order<AccountId> {
+    pub listing: Listing<AccountId>,
+    pub buyer: AccountId,
+}
+
 /// The module configuration trait.
-pub trait Config: system::Config {
-    type TransferPermission: Get<bool>;
+pub trait Config: system::Config + orml_nft::Config {
+    /// The class ID type
+    type ClassId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy;
+    /// The token ID type
+    type TokenId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy;
+    /// Allow assets to be transferred through the wallet
+    type AllowTransfer: Get<bool>;
+    /// Allow assets to be burned from the wallet
+    type AllowBurn: Get<bool>;
+    /// Allow assets to be listed on the market
+    type AllowMarketListing: Get<bool>;
+    /// Allow asset claiming
+    type AllowClaim: Get<bool>;
+    /// Currency type for reserve/unreserve balance
+    type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
+    /// Wallet Module Id
+    type ModuleId: Get<ModuleId>;
+}
 
-    type BurnPermission: Get<bool>;
+decl_storage! {
+  trait Store for Module<T: Config> as GamePowerWallet {
 
-    type MarketPermission: Get<bool>;
+      pub ListingByOwner get(fn get_listing_by_owner): map hasher(blake2_128_concat) T::AccountId => Listing<T::AccountId>;
+      pub OrderByOwner get(fn get_order_by_owner): map hasher(blake2_128_concat) T::AccountId => Order<T::AccountId>;
+      pub AllListings get(fn all_listings_count): u64;
+      pub AllOrders get(fn all_orders_count): u64;
+      pub NextListingId get(fn next_listing_id): u64;
+      pub NextOrderId get(fn next_order_id): u64;
+  }
 }
 
 
 decl_module! {
     pub struct Module<T: Config> for enum Call where origin: T::Origin {
 
-      const TransferPermission: bool = T::TransferPermission::get();
-      const BurnPermission: bool = T::BurnPermission::get();
-      const MarketPermission: bool = T::MarketPermission::get();
+      const AllowTransfer: bool = T::AllowTransfer::get();
+      const AllowBurn: bool = T::AllowBurn::get();
+      const AllowMarketListing: bool = T::AllowMarketListing::get();
+      const AllowClaim: bool = T::AllowClaim::get();
 
       #[weight = 10_000]
-        pub fn transfer(origin, name: Vec<u8>, properties: Vec<u8>) -> DispatchResult{
+      pub fn transfer(origin, asset:(<T as orml_nft::Config>::ClassId, <T as orml_nft::Config>::TokenId), to: T::AccountId) -> DispatchResult{
 
-            let sender = ensure_signed(origin)?;
+          let sender = ensure_signed(origin)?;
 
-            Ok(())
-        }
+          NftModule::<T>::transfer(&sender, &to, asset)?;
+
+          Ok(())
+      }
+
+      #[weight = 10_000]
+      pub fn burn(origin, token_id:Token) -> DispatchResult{
+
+          let sender = ensure_signed(origin)?;
+
+          Ok(())
+      }
+
+      #[weight = 10_000]
+      pub fn list(origin, token_id:Token, price:Price) -> DispatchResult{
+
+          let sender = ensure_signed(origin)?;
+
+          Ok(())
+      }
+
+      #[weight = 10_000]
+      pub fn buy(origin, token_id:Token, price:Price) -> DispatchResult{
+
+          let sender = ensure_signed(origin)?;
+
+          Ok(())
+      }
+
+      #[weight = 10_000]
+      pub fn emote(origin, token_id:Token, emote: Vec<u8>) -> DispatchResult{
+
+          let sender = ensure_signed(origin)?;
+
+          Ok(())
+      }
+
+      #[weight = 10_000]
+      pub fn claim(origin, token_id:Token) -> DispatchResult{
+
+          let sender = ensure_signed(origin)?;
+
+          Ok(())
+      }
 
     }
 }
