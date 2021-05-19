@@ -18,7 +18,10 @@
 // Ensure we're `no_std` when compiling for Wasm.
 #![cfg_attr(not(feature = "std"), no_std)]
 use codec::{Decode, Encode};
-use frame_support::{decl_error, decl_event, decl_module, decl_storage, ensure, Parameter};
+use frame_support::{
+  decl_error, decl_event, decl_module, decl_storage, ensure, Parameter,
+  traits::{Get},
+};
 use frame_system::{self as system, ensure_signed};
 use sp_runtime::{
     traits::{AtLeast32Bit, One, StaticLookup, Zero},
@@ -35,23 +38,18 @@ mod tests;
 
 /// The module configuration trait.
 pub trait Config: system::Config {
-    /// The overarching event type.
-    type Event: From<Event<Self>> + Into<<Self as system::Config>::Event>;
+    type TransferPermission: Get<bool>;
 
-    type TransferPermission: bool;
+    type BurnPermission: Get<bool>;
 
-    type BurnPermission: bool;
-
-    type MarketPermission: bool;
+    type MarketPermission: Get<bool>;
 }
 
 
 decl_module! {
     pub struct Module<T: Config> for enum Call where origin: T::Origin {
 
-        fn deposit_event() = default;
-
-        const TransferPermission: bool = T::TransferPermission;
+        const TransferPermission: bool = T::TransferPermission::get();
 
     }
 }
