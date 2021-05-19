@@ -38,11 +38,11 @@ pub trait Config: system::Config {
     /// The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as system::Config>::Event>;
 
-    type TransferPermission: WalletFeaturePermission;
+    type TransferPermission: bool;
 
-    type BurnPermission: WalletFeaturePermission;
+    type BurnPermission: bool;
 
-    type MarketPermission: WalletFeaturePermission;
+    type MarketPermission: bool;
 }
 
 
@@ -51,7 +51,7 @@ decl_module! {
 
         fn deposit_event() = default;
 
-        const TransferPermission: WalletFeaturePermission = T::TransferPermission;
+        const TransferPermission: bool = T::TransferPermission;
 
     }
 }

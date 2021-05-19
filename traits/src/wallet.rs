@@ -13,12 +13,3 @@ pub trait Wallet<AccountId>: NFT<AccountId> {
 	/// Transfer the given token ID from one account to another.
 	fn send(from: &AccountId, to: &AccountId, token: (Self::ClassId, Self::TokenId)) -> DispatchResult;
 }
-
-trait PermissionType {
-	type Enabled;
-	type Disabled;
-}
-
-pub trait WalletFeaturePermission {
-	type Permission: PermissionType;
-}
