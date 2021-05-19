@@ -26,7 +26,7 @@ use sp_runtime::{
     DispatchError, DispatchResult,
 };
 use sp_std::vec::Vec;
-use gamepower_traits::{WalletFeaturePermission};
+use gamepower_traits::*;
 
 #[cfg(test)]
 mod mock;
@@ -47,18 +47,6 @@ pub trait Config: system::Config {
 }
 
 
-decl_storage! {
-    trait Store for Module<T: Config> as GamePowerWallet {
-        
-    }
-}
-
-decl_error! {
-    pub enum Error for Module<T: Config> {
-        
-    }
-}
-
 decl_module! {
     pub struct Module<T: Config> for enum Call where origin: T::Origin {
         type Error = Error<T>;
@@ -70,12 +58,6 @@ decl_module! {
     }
 }
 
-decl_event! {
-    pub enum Event<T> 
-    {
-
-    }
-}
 
 impl<T: Config> Module<T> {
     
