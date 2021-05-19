@@ -49,7 +49,15 @@ pub trait Config: system::Config {
 decl_module! {
     pub struct Module<T: Config> for enum Call where origin: T::Origin {
 
-        const TransferPermission: bool = T::TransferPermission::get();
+      const TransferPermission: bool = T::TransferPermission::get();
+
+      #[weight = 10_000]
+        pub fn transfer(origin, name: Vec<u8>, properties: Vec<u8>) -> DispatchResult{
+
+            let sender = ensure_signed(origin)?;
+
+            Ok(())
+        }
 
     }
 }
