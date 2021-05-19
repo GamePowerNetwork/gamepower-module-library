@@ -26,7 +26,7 @@ use sp_runtime::{
     DispatchError, DispatchResult,
 };
 use sp_std::vec::Vec;
-use gamepower_traits::{WalletFeaturePermission}
+use gamepower_traits::{WalletFeaturePermission};
 
 #[cfg(test)]
 mod mock;
