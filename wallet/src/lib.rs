@@ -28,6 +28,9 @@ use sp_runtime::{
   traits::{AtLeast32BitUnsigned, Member},
     DispatchResult, ModuleId, RuntimeDebug,
 };
+
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
 use sp_std::vec::Vec;
 use orml_nft::Pallet as NftModule;
 use gamepower_traits::*;
