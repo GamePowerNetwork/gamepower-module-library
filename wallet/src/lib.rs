@@ -49,7 +49,6 @@ pub trait Config: system::Config {
 
 decl_module! {
     pub struct Module<T: Config> for enum Call where origin: T::Origin {
-        type Error = Error<T>;
 
         fn deposit_event() = default;
 
