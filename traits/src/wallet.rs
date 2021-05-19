@@ -19,6 +19,7 @@ enum Permission {
 	Disabled
 }
 
+#![feature(associated_type_defaults)]
 pub trait WalletFeaturePermission {
 	type Permission = Permission;
 }
