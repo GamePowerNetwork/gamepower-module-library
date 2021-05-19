@@ -14,7 +14,11 @@ pub trait Wallet<AccountId>: NFT<AccountId> {
 	fn send(from: &AccountId, to: &AccountId, token: (Self::ClassId, Self::TokenId)) -> DispatchResult;
 }
 
-pub enum WalletFeaturePermission {
+enum Permission {
 	Enabled,
 	Disabled
+}
+
+pub trait WalletFeaturePermission {
+	type Permission = Permission;
 }
