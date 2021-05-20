@@ -19,14 +19,12 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 use codec::{Decode, Encode};
 use frame_support::{
-  decl_module, decl_storage, decl_error, ensure,
+  decl_module, decl_storage, decl_error, decl_event, ensure,
   traits::{Currency, Get, ReservableCurrency},
-  Parameter,
 };
 use frame_system::{self as system, ensure_signed};
 use sp_runtime::{
-  traits::{AtLeast32BitUnsigned, Member},
-    DispatchResult, ModuleId, RuntimeDebug,
+  DispatchResult, ModuleId, RuntimeDebug,
 };
 
 #[cfg(feature = "std")]
@@ -63,20 +61,23 @@ pub struct Order<AccountId> {
 
 /// The module configuration trait.
 pub trait Config: system::Config + orml_nft::Config {
-    type Transfer: OnTransferHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
-    type Burn: OnBurnHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
-    /// Allow assets to be transferred through the wallet
-    type AllowTransfer: Get<bool>;
-    /// Allow assets to be burned from the wallet
-    type AllowBurn: Get<bool>;
-    /// Allow assets to be listed on the market
-    type AllowMarketListing: Get<bool>;
-    /// Allow asset claiming
-    type AllowClaim: Get<bool>;
-    /// Currency type for reserve/unreserve balance
-    type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
-    /// Wallet Module Id
-    type ModuleId: Get<ModuleId>;
+  type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
+  /// Wallet Transfer Handler
+  type Transfer: OnTransferHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
+  /// Wallet Burn Handler
+  type Burn: OnBurnHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
+  /// Allow assets to be transferred through the wallet
+  type AllowTransfer: Get<bool>;
+  /// Allow assets to be burned from the wallet
+  type AllowBurn: Get<bool>;
+  /// Allow assets to be listed on the market
+  type AllowMarketListing: Get<bool>;
+  /// Allow asset claiming
+  type AllowClaim: Get<bool>;
+  /// Currency type for reserve/unreserve balance
+  type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
+  /// Wallet Module Id
+  type ModuleId: Get<ModuleId>;
 }
 
 type ClassIdOf<T> = <T as orml_nft::Config>::ClassId;
@@ -94,6 +95,20 @@ decl_storage! {
       pub NextOrderId get(fn next_order_id): u64;
   }
 }
+
+decl_event!(
+  pub enum Event<T>
+  where
+      <T as frame_system::Config>::AccountId,
+      ClassId = ClassIdOf<T>,
+      TokenId = TokenIdOf<T>,
+  {
+      /// Asset successfully transferred through the wallet [from, to, classId, tokenId]
+      WalletAssetTransferred(AccountId, AccountId, ClassId, TokenId),
+      /// Asset successfully burned through the wallet [owner, classId, tokenId]
+      WalletAssetBurned(AccountId, ClassId, TokenId),
+  }
+);
 
 decl_error! {
   pub enum Error for Module<T: Config> {
@@ -113,6 +128,8 @@ decl_module! {
     pub struct Module<T: Config> for enum Call where origin: T::Origin {
       type Error = Error<T>;
 
+      fn deposit_event() = default;
+
       const AllowTransfer: bool = T::AllowTransfer::get();
       const AllowBurn: bool = T::AllowBurn::get();
       const AllowMarketListing: bool = T::AllowMarketListing::get();
@@ -125,6 +142,10 @@ decl_module! {
 
         ensure!(T::AllowTransfer::get(), Error::<T>::TransfersNotAllowed);
 
+        T::Transfer::transfer(&sender, &to, asset)?;
+
+        Self::deposit_event(RawEvent::WalletAssetTransferred(sender, to, asset.0, asset.1));
+
         Ok(().into())
       }
 
@@ -134,6 +155,10 @@ decl_module! {
         let sender = ensure_signed(origin)?;
 
         ensure!(T::AllowBurn::get(), Error::<T>::BurningNotAllowed);
+
+        T::Burn::burn(&sender, asset)?;
+
+        Self::deposit_event(RawEvent::WalletAssetBurned(sender, asset.0, asset.1));
 
         Ok(().into())
       }
