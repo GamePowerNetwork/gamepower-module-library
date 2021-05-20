@@ -63,6 +63,8 @@ pub struct Order<AccountId> {
 
 /// The module configuration trait.
 pub trait Config: system::Config + orml_nft::Config {
+    type Transfer: OnTransferHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
+    type Burn: OnBurnHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
     /// Allow assets to be transferred through the wallet
     type AllowTransfer: Get<bool>;
     /// Allow assets to be burned from the wallet
@@ -107,7 +109,9 @@ decl_module! {
 
           let sender = ensure_signed(origin)?;
 
-          NftModule::<T>::transfer(&sender, &to, asset)?;
+          //NftModule::<T>::transfer(&sender, &to, asset)?;
+
+          T::Transfer::transfer(&sender, &to, asset)?;
 
           Ok(())
       }
@@ -156,6 +160,9 @@ decl_module! {
 }
 
 
-impl<T: Config> Module<T> {
-    
+impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
+    fn transfer(from: &T::AccountId, to: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
+      NftModule::<T>::transfer(&from, &to, asset)?;
+      Ok(())
+    }
 }
