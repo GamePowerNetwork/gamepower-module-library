@@ -19,7 +19,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 use codec::{Decode, Encode};
 use frame_support::{
-  decl_module, decl_storage,
+  decl_module, decl_storage, decl_error, ensure,
   traits::{Currency, Get, ReservableCurrency},
   Parameter,
 };
@@ -95,9 +95,23 @@ decl_storage! {
   }
 }
 
+decl_error! {
+  pub enum Error for Module<T: Config> {
+      /// Assets cannot be tranferred
+      TransfersNotAllowed,
+      /// Assets cannot be burned
+      BurningNotAllowed,
+      /// Assets cannot be listed on the market
+      MarketListingNotAllowed,
+      /// Assets cannot be claimed
+      ClaimingNotAllowed,
+  }
+}
+
 
 decl_module! {
     pub struct Module<T: Config> for enum Call where origin: T::Origin {
+      type Error = Error<T>;
 
       const AllowTransfer: bool = T::AllowTransfer::get();
       const AllowBurn: bool = T::AllowBurn::get();
@@ -107,21 +121,21 @@ decl_module! {
       #[weight = 10_000]
       pub fn transfer(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), to: T::AccountId) -> DispatchResult{
 
-          let sender = ensure_signed(origin)?;
+        let sender = ensure_signed(origin)?;
 
-          //NftModule::<T>::transfer(&sender, &to, asset)?;
+        ensure!(T::AllowTransfer::get(), Error::<T>::TransfersNotAllowed);
 
-          T::Transfer::transfer(&sender, &to, asset)?;
-
-          Ok(())
+        Ok(().into())
       }
 
       #[weight = 10_000]
       pub fn burn(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
 
-          let sender = ensure_signed(origin)?;
+        let sender = ensure_signed(origin)?;
 
-          Ok(())
+        ensure!(T::AllowBurn::get(), Error::<T>::BurningNotAllowed);
+
+        Ok(().into())
       }
 
       #[weight = 10_000]
@@ -161,10 +175,10 @@ decl_module! {
 
 // Implement OnTransferHandler
 impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
-    fn transfer(from: &T::AccountId, to: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
-      NftModule::<T>::transfer(&from, &to, asset)?;
-      Ok(())
-    }
+  fn transfer(from: &T::AccountId, to: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
+    NftModule::<T>::transfer(&from, &to, asset)?;
+    Ok(())
+  }
 }
 
 // Implement OnBurnHandler
