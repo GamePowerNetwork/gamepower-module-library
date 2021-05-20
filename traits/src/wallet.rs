@@ -11,5 +11,5 @@ pub trait OnTransferHandler<AccountId, ClassId, TokenId>  {
 /// A asset burn handler
 pub trait OnBurnHandler<AccountId, ClassId, TokenId> {
 	/// Transfer the given token ID from one account to another.
-	fn burn(from: &AccountId, asset: (ClassId, TokenId)) -> DispatchResult;
+	fn burn(owner: &AccountId, asset: (ClassId, TokenId)) -> DispatchResult;
 }

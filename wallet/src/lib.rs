@@ -159,10 +159,18 @@ decl_module! {
     }
 }
 
-
+// Implement OnTransferHandler
 impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
     fn transfer(from: &T::AccountId, to: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
       NftModule::<T>::transfer(&from, &to, asset)?;
       Ok(())
     }
+}
+
+// Implement OnBurnHandler
+impl<T: Config> OnBurnHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
+  fn burn(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
+    NftModule::<T>::burn(&owner, asset)?;
+    Ok(())
+  }
 }
