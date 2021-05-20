@@ -41,16 +41,17 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-type Token = u64;
-type Class = u128;
-type Price = u128;
+// Set a max size for certain types
+type TokenId = u128;
+type ClassId = u128;
+type Balance = u128;
 
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Listing<AccountId> {
-    pub asset: (Class, Token),
+    pub asset: (ClassId, TokenId),
     pub seller: AccountId,
-    pub price: Price,
+    pub price: Balance,
 }
 
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
@@ -62,10 +63,6 @@ pub struct Order<AccountId> {
 
 /// The module configuration trait.
 pub trait Config: system::Config + orml_nft::Config {
-    /// The class ID type
-    type ClassId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy;
-    /// The token ID type
-    type TokenId: Parameter + Member + AtLeast32BitUnsigned + Default + Copy;
     /// Allow assets to be transferred through the wallet
     type AllowTransfer: Get<bool>;
     /// Allow assets to be burned from the wallet
@@ -79,6 +76,10 @@ pub trait Config: system::Config + orml_nft::Config {
     /// Wallet Module Id
     type ModuleId: Get<ModuleId>;
 }
+
+type ClassIdOf<T> = <T as orml_nft::Config>::ClassId;
+type TokenIdOf<T> = <T as orml_nft::Config>::TokenId;
+
 
 decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
@@ -102,7 +103,7 @@ decl_module! {
       const AllowClaim: bool = T::AllowClaim::get();
 
       #[weight = 10_000]
-      pub fn transfer(origin, asset:(<T as orml_nft::Config>::ClassId, <T as orml_nft::Config>::TokenId), to: T::AccountId) -> DispatchResult{
+      pub fn transfer(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), to: T::AccountId) -> DispatchResult{
 
           let sender = ensure_signed(origin)?;
 
@@ -112,7 +113,7 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn burn(origin, token_id:Token) -> DispatchResult{
+      pub fn burn(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
 
           let sender = ensure_signed(origin)?;
 
@@ -120,7 +121,7 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn list(origin, token_id:Token, price:Price) -> DispatchResult{
+      pub fn list(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), price: Balance) -> DispatchResult{
 
           let sender = ensure_signed(origin)?;
 
@@ -128,7 +129,7 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn buy(origin, token_id:Token, price:Price) -> DispatchResult{
+      pub fn buy(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
 
           let sender = ensure_signed(origin)?;
 
@@ -136,7 +137,7 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn emote(origin, token_id:Token, emote: Vec<u8>) -> DispatchResult{
+      pub fn emote(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), emote: Vec<u8>) -> DispatchResult{
 
           let sender = ensure_signed(origin)?;
 
@@ -144,7 +145,7 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn claim(origin, token_id:Token) -> DispatchResult{
+      pub fn claim(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
 
           let sender = ensure_signed(origin)?;
 
