@@ -1,4 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+pub use wallet::*;
+
+pub mod wallet;
 
 /// An index to a block.
 pub type BlockNumber = u64;
