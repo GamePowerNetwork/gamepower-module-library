@@ -24,13 +24,13 @@ use frame_support::{
 };
 use frame_system::{self as system, ensure_signed};
 use sp_runtime::{
-  DispatchResult, ModuleId, RuntimeDebug,
+  DispatchResult, DispatchError, ModuleId, RuntimeDebug,
 };
 
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_std::vec::Vec;
-use orml_nft::Pallet as NftModule;
+use orml_nft::Pallet as AssetModule;
 use gamepower_traits::*;
 use gamepower_primitives::{ Balance };
 
@@ -62,12 +62,14 @@ pub trait Config: system::Config + orml_nft::Config {
   type Transfer: OnTransferHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
   /// Wallet Burn Handler
   type Burn: OnBurnHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
+  /// Wallet Claim Handler
+  type Claim: OnClaimHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
   /// Allow assets to be transferred through the wallet
   type AllowTransfer: Get<bool>;
   /// Allow assets to be burned from the wallet
   type AllowBurn: Get<bool>;
   /// Allow assets to be listed on the market
-  type AllowMarketListing: Get<bool>;
+  type AllowEscrow: Get<bool>;
   /// Allow asset claiming
   type AllowClaim: Get<bool>;
   /// Currency type for reserve/unreserve balance
@@ -84,12 +86,12 @@ pub type OrderOf<T> = Order<<T as frame_system::Config>::AccountId, ListingOf<T>
 decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
 
-      pub ListingByOwner get(fn get_listing_by_owner): map hasher(blake2_128_concat) T::AccountId => Listing<ClassIdOf<T>, TokenIdOf<T>, T::AccountId>;
-      pub OrderByOwner get(fn get_order_by_owner): map hasher(blake2_128_concat) T::AccountId => OrderOf<T>;
-      pub AllListings get(fn all_listings_count): u64;
-      pub AllOrders get(fn all_orders_count): u64;
+      pub Listings get(fn listings): map hasher(blake2_128_concat) T::AccountId => Listing<ClassIdOf<T>, TokenIdOf<T>, T::AccountId>;
       pub NextListingId get(fn next_listing_id): u64;
+      pub ListingCount: u64;
+      pub Orders get(fn orders): map hasher(blake2_128_concat) T::AccountId => OrderOf<T>;
       pub NextOrderId get(fn next_order_id): u64;
+      pub OrderCount: u64;
   }
 }
 
@@ -114,9 +116,15 @@ decl_error! {
       /// Assets cannot be burned
       BurningNotAllowed,
       /// Assets cannot be listed on the market
-      MarketListingNotAllowed,
+      EscrowNotAllowed,
+      /// Asset locked in Escrow
+      AssetLockedInEscrow,
       /// Assets cannot be claimed
       ClaimingNotAllowed,
+      /// Asset not found
+      AssetNotFound,
+      /// No Permission for this action
+      NoPermission,
   }
 }
 
@@ -129,7 +137,7 @@ decl_module! {
 
       const AllowTransfer: bool = T::AllowTransfer::get();
       const AllowBurn: bool = T::AllowBurn::get();
-      const AllowMarketListing: bool = T::AllowMarketListing::get();
+      const AllowEscrow: bool = T::AllowEscrow::get();
       const AllowClaim: bool = T::AllowClaim::get();
 
       #[weight = 10_000]
@@ -137,8 +145,19 @@ decl_module! {
 
         let sender = ensure_signed(origin)?;
 
+        // Check that the wallet has permission to transfer assets
         ensure!(T::AllowTransfer::get(), Error::<T>::TransfersNotAllowed);
 
+        // Check that the sender owns this asset
+        let check_ownership = Self::check_ownership(&sender, &asset)?;
+        ensure!(check_ownership, Error::<T>::NoPermission);
+
+        // Check if the asset is in Escrow
+        if T::AllowEscrow::get(){
+          ensure!(!Listings::<T>::contains_key(&sender), Error::<T>::AssetLockedInEscrow);
+        }
+
+        // Transfer the asset
         T::Transfer::transfer(&sender, &to, asset)?;
 
         Self::deposit_event(RawEvent::WalletAssetTransferred(sender, to, asset.0, asset.1));
@@ -151,8 +170,19 @@ decl_module! {
 
         let sender = ensure_signed(origin)?;
 
+        // Check that the wallet has permission to burn assets
         ensure!(T::AllowBurn::get(), Error::<T>::BurningNotAllowed);
 
+        // Check that the sender owns this asset
+        let check_ownership = Self::check_ownership(&sender, &asset)?;
+        ensure!(check_ownership, Error::<T>::NoPermission);
+
+        // Check if the asset is in Escrow
+        if T::AllowEscrow::get(){
+          ensure!(!Listings::<T>::contains_key(&sender), Error::<T>::AssetLockedInEscrow);
+        }
+        
+        // Burn the asset
         T::Burn::burn(&sender, asset)?;
 
         Self::deposit_event(RawEvent::WalletAssetBurned(sender, asset.0, asset.1));
@@ -195,10 +225,24 @@ decl_module! {
     }
 }
 
+// Module Implementation
+impl<T: Config> Module<T> {
+  fn check_ownership(
+    owner: &T::AccountId, 
+    asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> Result<bool, DispatchError> {
+    let asset_info = AssetModule::<T>::tokens(asset.0, asset.1).ok_or(Error::<T>::AssetNotFound)?;
+    if owner == &asset_info.owner {
+      return Ok(true);
+    }
+    
+    return Ok(false);
+  }
+}
+
 // Implement OnTransferHandler
 impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
   fn transfer(from: &T::AccountId, to: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
-    NftModule::<T>::transfer(&from, &to, asset)?;
+    AssetModule::<T>::transfer(&from, &to, asset)?;
     Ok(())
   }
 }
@@ -206,7 +250,15 @@ impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Modu
 // Implement OnBurnHandler
 impl<T: Config> OnBurnHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
   fn burn(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
-    NftModule::<T>::burn(&owner, asset)?;
+    AssetModule::<T>::burn(&owner, asset)?;
+    Ok(())
+  }
+}
+
+// Implement OnClaimHandler
+impl<T: Config> OnClaimHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
+  fn claim(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
+    //AssetModule::<T>::burn(&owner, asset)?;
     Ok(())
   }
 }
