@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 use sp_std::vec::Vec;
 use orml_nft::Pallet as NftModule;
 use gamepower_traits::*;
+use gamepower_primitives::{ Balance };
 
 #[cfg(test)]
 mod mock;
@@ -39,23 +40,18 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-// Set a max size for certain types
-type TokenId = u128;
-type ClassId = u128;
-type Balance = u128;
-
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct Listing<AccountId> {
-    pub asset: (ClassId, TokenId),
+pub struct Listing<ClassIdOf, TokenIdOf, AccountId> {
+    pub asset: (ClassIdOf, TokenIdOf),
     pub seller: AccountId,
     pub price: Balance,
 }
 
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct Order<AccountId> {
-    pub listing: Listing<AccountId>,
+pub struct Order<AccountId, ListingOf> {
+    pub listing: ListingOf,
     pub buyer: AccountId,
 }
 
@@ -80,15 +76,16 @@ pub trait Config: system::Config + orml_nft::Config {
   type ModuleId: Get<ModuleId>;
 }
 
-type ClassIdOf<T> = <T as orml_nft::Config>::ClassId;
-type TokenIdOf<T> = <T as orml_nft::Config>::TokenId;
-
+pub type ClassIdOf<T> = <T as orml_nft::Config>::ClassId;
+pub type TokenIdOf<T> = <T as orml_nft::Config>::TokenId;
+pub type ListingOf<T> = Listing<ClassIdOf<T>, TokenIdOf<T>, <T as frame_system::Config>::AccountId>;
+pub type OrderOf<T> = Order<<T as frame_system::Config>::AccountId, ListingOf<T>>;
 
 decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
 
-      pub ListingByOwner get(fn get_listing_by_owner): map hasher(blake2_128_concat) T::AccountId => Listing<T::AccountId>;
-      pub OrderByOwner get(fn get_order_by_owner): map hasher(blake2_128_concat) T::AccountId => Order<T::AccountId>;
+      pub ListingByOwner get(fn get_listing_by_owner): map hasher(blake2_128_concat) T::AccountId => Listing<ClassIdOf<T>, TokenIdOf<T>, T::AccountId>;
+      pub OrderByOwner get(fn get_order_by_owner): map hasher(blake2_128_concat) T::AccountId => OrderOf<T>;
       pub AllListings get(fn all_listings_count): u64;
       pub AllOrders get(fn all_orders_count): u64;
       pub NextListingId get(fn next_listing_id): u64;

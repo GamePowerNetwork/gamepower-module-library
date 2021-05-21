@@ -1,0 +1,28 @@
+[package]
+name = "gamepower-primitives"
+description = "Pallet that allows interfacing with the GamePower NFT Wallet"
+repository = "https://github.com/GamePowerNetwork/gamepower-module-library/tree/main/wallet"
+license = "Apache-2.0"
+version = "0.0.1"
+authors = ["GamePower Developers <dev@gamepower.network>"]
+edition = "2018"
+
+[package.metadata.docs.rs]
+targets = ['x86_64-unknown-linux-gnu']
+
+[dependencies]
+serde = { version = "1.0.119", optional = true, features = ["derive"] }
+codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
+sp-core = { version = "3.0.0", default-features = false }
+sp-runtime = { version = "3.0.0", default-features = false }
+sp-std = { version = "3.0.0", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "serde",
+    "codec/std",
+    "sp-runtime/std",
+    "sp-core/std",
+    "sp-std/std",
+]
