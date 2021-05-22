@@ -94,6 +94,7 @@ decl_storage! {
     pub OpenClaims get(fn open_claims): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) ClaimId => ClaimOf<T>;
     pub AllClaims get(fn all_claims): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
     pub NextClaimId get(fn next_claim_id): ClaimId;
+    pub Emotes get(fn emotes): map hasher(blake2_128_concat) (ClassIdOf<T>, TokenIdOf<T>) => Vec<u8>;
   }
 }
 
@@ -114,8 +115,10 @@ decl_event!(
     WalletAssetUnlisted(AccountId, ClassId, TokenId),
     /// Asset successfully purchased through the wallet [seller, buyer, classId, tokenId]
     WalletAssetPurchased(AccountId, AccountId, ClassId, TokenId),
-    /// Asset successfully purchased through the wallet [seller, buyer, classId, tokenId]
+    /// Asset successfully purchased through the wallet [receiver, classId, tokenId]
     WalletAssetClaimed(AccountId, ClassId, TokenId),
+    /// Asset claim created [creator, receiver, classId, tokenId]
+    WalletClaimCreated(AccountId, AccountId, ClassId, TokenId),
   }
 );
 
@@ -135,6 +138,8 @@ decl_error! {
     AssetNotFound,
     /// Claim not found
     ClaimNotFound,
+    /// Claim creation failed
+    ClaimCreateFailed,
     /// Maximum listings in Escrow
     NoAvailableListingId,
     /// Maximum claims made
@@ -247,8 +252,10 @@ decl_module! {
         });
 
         // Add listing to storage
-        Listings::<T>::insert(sender, listing_id, listing);
+        Listings::<T>::insert(&sender, listing_id, listing);
         AllListings::<T>::append(&asset);
+
+        Self::deposit_event(RawEvent::WalletAssetListed(sender, price, asset.0, asset.1));
 
         Ok(())
       }
@@ -287,6 +294,8 @@ decl_module! {
 
           Ok(())
         })?;
+
+        Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_data.asset.0, listing_data.asset.1));
 
         Ok(())
       }
@@ -334,6 +343,29 @@ decl_module! {
           Ok(())
         })?;
 
+        Self::deposit_event(RawEvent::WalletAssetClaimed(sender, claim_data.asset.0, claim_data.asset.1));
+
+        Ok(())
+      }
+
+      #[weight = 10_000]
+      pub fn create_claim(origin, receiver: T::AccountId, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
+
+        let sender = ensure_signed(origin)?;
+
+        // Check that the wallet has permission to claim assets
+        ensure!(T::AllowClaim::get(), Error::<T>::ClaimingNotAllowed);
+
+        // Ensure that the sender is the own of this class
+        let class_info = AssetModule::<T>::classes(asset.0).ok_or(Error::<T>::AssetNotFound)?;
+        ensure!(sender == class_info.owner, Error::<T>::NoPermission);
+
+        // Ensure the claim is created
+        let claim_created = Self::do_create_claim(&sender, &receiver, asset)?;
+        ensure!(claim_created, Error::<T>::ClaimCreateFailed);
+        
+        Self::deposit_event(RawEvent::WalletClaimCreated(sender, receiver, asset.0, asset.1));
+
         Ok(())
       }
 
@@ -377,11 +409,11 @@ impl<T: Config> Module<T> {
     return Self::is_listed(&asset) || Self::is_claiming(&asset);
   }
 
-  pub fn create_claim(
+  fn do_create_claim(
     owner: &T::AccountId,
     receiver: &T::AccountId,
     asset: (ClassIdOf<T>, TokenIdOf<T>)
-  ) -> DispatchResult {
+  ) -> Result<bool, DispatchError> {
     // Get claim account
     let claim_account: T::AccountId = Self::get_claim_account();
 
@@ -406,7 +438,7 @@ impl<T: Config> Module<T> {
     OpenClaims::<T>::insert(receiver, claim_id, claim);
     AllClaims::<T>::append(&asset);
 
-    Ok(())
+    Ok(true)
   }
 
   pub fn create_batch_claims_by_class(
