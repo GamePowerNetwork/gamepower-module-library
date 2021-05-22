@@ -121,8 +121,8 @@ decl_event!(
     WalletAssetClaimed(AccountId, ClassId, TokenId),
     /// Asset claim created [creator, receiver, classId, tokenId]
     WalletClaimCreated(AccountId, AccountId, ClassId, TokenId),
-    /// Asset buy successful [seller, buyer, classId, tokenId]
-    WalletAssetBuySuccess(AccountId, AccountId, ClassId, TokenId),
+    /// Asset buy successful [seller, buyer, classId, tokenId, price]
+    WalletAssetBuySuccess(AccountId, AccountId, ClassId, TokenId, Balance),
   }
 );
 
@@ -337,7 +337,7 @@ decl_module! {
           Ok(current_count)
         });
 
-        Self::deposit_event(RawEvent::WalletAssetBuySuccess(seller, sender, listing_data.asset.0, listing_data.asset.1));
+        Self::deposit_event(RawEvent::WalletAssetBuySuccess(seller, sender, listing_data.asset.0, listing_data.asset.1, listing_data.price));
 
         Ok(())
       }
