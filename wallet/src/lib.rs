@@ -246,11 +246,45 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn unlist(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
+      pub fn unlist(origin, listing_id: u64) -> DispatchResult{
 
-          let sender = ensure_signed(origin)?;
+        let sender = ensure_signed(origin)?;
+
+        // Check that the wallet has permission to list assets
+        ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
+
+        // Ensure the listing is in storage for this user
+        ensure!(Listings::<T>::contains_key(&sender, listing_id), Error::<T>::AssetNotFound);
+        
+        // Get listing data
+        let listing_data = Listings::<T>::get(&sender, listing_id);
+
+        //Escrow Account
+        let escrow_account: T::AccountId = T::ModuleId::get().into_account();
+
+        // Transfer out of escrow
+        Self::escrow_transfer(&escrow_account, &sender, listing_data.asset);
+
+        // Decrease Listing count
+        ListingCount::mutate(|id| -> Result<u64, DispatchError> {
+          let current_count = *id;
+          *id = id.checked_sub(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
+
+          Ok(current_count)
+        });
+
+        // Remove listing from storage
+        Listings::<T>::remove(sender, listing_id);
+
+        AllListings::<T>::try_mutate(|asset_ids| -> DispatchResult {
+          // Check if the asset_id already in the owner
+          let asset_index = asset_ids.iter().position(|x| *x == listing_data.asset).unwrap();
+          asset_ids.remove(asset_index);
 
           Ok(())
+        })?;
+
+        Ok(())
       }
 
       #[weight = 10_000]
