@@ -25,6 +25,7 @@ use frame_support::{
 use frame_system::{self as system, ensure_signed};
 use sp_runtime::{
   DispatchResult, DispatchError, ModuleId, RuntimeDebug,
+  traits::{AccountIdConversion, One},
 };
 
 #[cfg(feature = "std")]
@@ -43,16 +44,16 @@ mod tests;
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Listing<ClassIdOf, TokenIdOf, AccountId> {
-    pub asset: (ClassIdOf, TokenIdOf),
-    pub seller: AccountId,
-    pub price: Balance,
+  pub owner: AccountId,
+  pub asset: (ClassIdOf, TokenIdOf),
+  pub price: Balance,
 }
 
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Order<AccountId, ListingOf> {
-    pub listing: ListingOf,
-    pub buyer: AccountId,
+  pub listing: ListingOf,
+  pub buyer: AccountId,
 }
 
 /// The module configuration trait.
@@ -85,46 +86,49 @@ pub type OrderOf<T> = Order<<T as frame_system::Config>::AccountId, ListingOf<T>
 
 decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
-
-      pub Listings get(fn listings): map hasher(blake2_128_concat) T::AccountId => Listing<ClassIdOf<T>, TokenIdOf<T>, T::AccountId>;
-      pub NextListingId get(fn next_listing_id): u64;
-      pub ListingCount: u64;
-      pub Orders get(fn orders): map hasher(blake2_128_concat) T::AccountId => OrderOf<T>;
-      pub NextOrderId get(fn next_order_id): u64;
-      pub OrderCount: u64;
+    pub Listings get(fn listings): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) u64 => ListingOf<T>;
+		pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
+    pub NextListingId get(fn next_listing_id): u64;
+    pub ListingCount: u64;
+    pub Orders get(fn orders): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) u64 => OrderOf<T>;
+    pub AllOrders get(fn all_orders): Vec<OrderOf<T>>;
+    pub NextOrderId get(fn next_order_id): u64;
+    pub OrderCount: u64;
   }
 }
 
 decl_event!(
   pub enum Event<T>
   where
-      <T as frame_system::Config>::AccountId,
-      ClassId = ClassIdOf<T>,
-      TokenId = TokenIdOf<T>,
+    <T as frame_system::Config>::AccountId,
+    ClassId = ClassIdOf<T>,
+    TokenId = TokenIdOf<T>,
   {
-      /// Asset successfully transferred through the wallet [from, to, classId, tokenId]
-      WalletAssetTransferred(AccountId, AccountId, ClassId, TokenId),
-      /// Asset successfully burned through the wallet [owner, classId, tokenId]
-      WalletAssetBurned(AccountId, ClassId, TokenId),
+    /// Asset successfully transferred through the wallet [from, to, classId, tokenId]
+    WalletAssetTransferred(AccountId, AccountId, ClassId, TokenId),
+    /// Asset successfully burned through the wallet [owner, classId, tokenId]
+    WalletAssetBurned(AccountId, ClassId, TokenId),
   }
 );
 
 decl_error! {
   pub enum Error for Module<T: Config> {
-      /// Assets cannot be tranferred
-      TransfersNotAllowed,
-      /// Assets cannot be burned
-      BurningNotAllowed,
-      /// Assets cannot be listed on the market
-      EscrowNotAllowed,
-      /// Asset locked in Escrow
-      AssetLockedInEscrow,
-      /// Assets cannot be claimed
-      ClaimingNotAllowed,
-      /// Asset not found
-      AssetNotFound,
-      /// No Permission for this action
-      NoPermission,
+    /// Assets cannot be tranferred
+    TransfersNotAllowed,
+    /// Assets cannot be burned
+    BurningNotAllowed,
+    /// Assets cannot be listed on the market
+    EscrowNotAllowed,
+    /// Asset locked in Escrow
+    AssetLockedInEscrow,
+    /// Assets cannot be claimed
+    ClaimingNotAllowed,
+    /// Asset not found
+    AssetNotFound,
+    /// Maximum listings in Escrow
+    NoAvailableListingId,
+    /// No Permission for this action
+    NoPermission,
   }
 }
 
@@ -152,9 +156,9 @@ decl_module! {
         let check_ownership = Self::check_ownership(&sender, &asset)?;
         ensure!(check_ownership, Error::<T>::NoPermission);
 
-        // Check if the asset is in Escrow
+        // Ensure that the asset is not in Escrow
         if T::AllowEscrow::get(){
-          ensure!(!Listings::<T>::contains_key(&sender), Error::<T>::AssetLockedInEscrow);
+          ensure!(!Self::is_listed(&asset), Error::<T>::AssetLockedInEscrow);
         }
 
         // Transfer the asset
@@ -179,7 +183,7 @@ decl_module! {
 
         // Check if the asset is in Escrow
         if T::AllowEscrow::get(){
-          ensure!(!Listings::<T>::contains_key(&sender), Error::<T>::AssetLockedInEscrow);
+          ensure!(!Self::is_listed(&asset), Error::<T>::AssetLockedInEscrow);
         }
         
         // Burn the asset
@@ -192,6 +196,57 @@ decl_module! {
 
       #[weight = 10_000]
       pub fn list(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), price: Balance) -> DispatchResult{
+
+        let sender = ensure_signed(origin)?;
+
+        // Check that the wallet has permission to list assets
+        ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
+
+        // Check that the sender owns this asset
+        let check_ownership = Self::check_ownership(&sender, &asset)?;
+        ensure!(check_ownership, Error::<T>::NoPermission);
+
+        // Ensure this asset isn't already listed
+        ensure!(!Self::is_listed(&asset), Error::<T>::NoPermission);
+        
+        //Escrow Account
+        let escrow_account: T::AccountId = T::ModuleId::get().into_account();
+
+        // Transfer into escrow
+        Self::escrow_transfer(&sender, &escrow_account, asset);
+
+        // Create listing data
+        let listing = Listing {
+          owner: sender.clone(),
+          asset,
+          price,
+        };
+
+        // Add the new listing id to storage
+        let listing_id = NextListingId::try_mutate(|id| -> Result<u64, DispatchError> {
+          let current_id = *id;
+          *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
+
+          Ok(current_id)
+        })?;
+
+        // Increment Listing count
+        ListingCount::mutate(|id| -> Result<u64, DispatchError> {
+          let current_count = *id;
+          *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
+
+          Ok(current_count)
+        });
+
+        // Add listing to storage
+        Listings::<T>::insert(sender, listing_id, listing);
+        AllListings::<T>::append(&asset);
+
+        Ok(())
+      }
+
+      #[weight = 10_000]
+      pub fn unlist(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
 
           let sender = ensure_signed(origin)?;
 
@@ -236,6 +291,19 @@ impl<T: Config> Module<T> {
     }
     
     return Ok(false);
+  }
+
+  fn is_listed(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+    return Self::all_listings().contains(asset);
+  }
+
+  fn escrow_transfer(
+    from: &T::AccountId,
+    to: &T::AccountId,
+    asset: (ClassIdOf<T>, TokenIdOf<T>)) -> Result<bool, DispatchError>
+  {
+    AssetModule::<T>::transfer(&from, &to, asset);
+    return Ok(true)
   }
 }
 
