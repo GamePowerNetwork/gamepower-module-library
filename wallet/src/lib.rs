@@ -20,7 +20,7 @@
 use codec::{Decode, Encode};
 use frame_support::{
   decl_module, decl_storage, decl_error, decl_event, ensure,
-  traits::{Currency, Get, ReservableCurrency},
+  traits::{Currency, ExistenceRequirement, Get, ReservableCurrency},
 };
 use frame_system::{self as system, ensure_signed};
 use sp_runtime::{
@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use sp_std::vec::Vec;
 use orml_nft::Pallet as AssetModule;
 use gamepower_traits::*;
-use gamepower_primitives::{ BlockNumber, Balance, ListingId, ClaimId };
+use gamepower_primitives::{ BlockNumber, ListingId, ClaimId };
 
 #[cfg(test)]
 mod mock;
@@ -43,7 +43,7 @@ mod tests;
 
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct Listing<ClassIdOf, TokenIdOf, AccountId> {
+pub struct Listing<ClassIdOf, TokenIdOf, AccountId, Balance> {
   pub owner: AccountId,
   pub asset: (ClassIdOf, TokenIdOf),
   pub price: Balance,
@@ -81,8 +81,9 @@ pub trait Config: system::Config + orml_nft::Config {
 
 pub type ClassIdOf<T> = <T as orml_nft::Config>::ClassId;
 pub type TokenIdOf<T> = <T as orml_nft::Config>::TokenId;
-pub type ListingOf<T> = Listing<ClassIdOf<T>, TokenIdOf<T>, <T as frame_system::Config>::AccountId>;
+pub type ListingOf<T> = Listing<ClassIdOf<T>, TokenIdOf<T>, <T as frame_system::Config>::AccountId, BalanceOf<T>>;
 pub type ClaimOf<T> = Claim<ClassIdOf<T>, TokenIdOf<T>, <T as frame_system::Config>::AccountId>;
+type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
@@ -104,6 +105,7 @@ decl_event!(
     <T as frame_system::Config>::AccountId,
     ClassId = ClassIdOf<T>,
     TokenId = TokenIdOf<T>,
+    Balance = BalanceOf<T>,
   {
     /// Asset successfully transferred through the wallet [from, to, classId, tokenId]
     WalletAssetTransferred(AccountId, AccountId, ClassId, TokenId),
@@ -119,6 +121,8 @@ decl_event!(
     WalletAssetClaimed(AccountId, ClassId, TokenId),
     /// Asset claim created [creator, receiver, classId, tokenId]
     WalletClaimCreated(AccountId, AccountId, ClassId, TokenId),
+    /// Asset buy successful [seller, buyer, classId, tokenId]
+    WalletAssetBuySuccess(AccountId, AccountId, ClassId, TokenId),
   }
 );
 
@@ -144,6 +148,8 @@ decl_error! {
     NoAvailableListingId,
     /// Maximum claims made
     NoAvailableClaimId,
+    /// Maximum orders in Escrow
+    NoAvailableOrderId,
     /// No Permission for this action
     NoPermission,
   }
@@ -208,7 +214,7 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn list(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), price: Balance) -> DispatchResult{
+      pub fn list(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), price: BalanceOf<T>) -> DispatchResult{
 
         let sender = ensure_signed(origin)?;
 
@@ -301,11 +307,39 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn buy(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
+      pub fn buy(origin, seller:T::AccountId, listing_id: ListingId) -> DispatchResult{
 
-          let sender = ensure_signed(origin)?;
+        let sender = ensure_signed(origin)?;
 
-          Ok(())
+        // Check that the wallet has permission to list assets
+        ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
+
+        // Ensure the listing is in storage for this user
+        ensure!(Listings::<T>::contains_key(&seller, listing_id), Error::<T>::AssetNotFound);
+
+        // Get listing data
+        let listing_data = Listings::<T>::take(&seller, listing_id);
+
+        // Transfer funds to seller
+        <T as Config>::Currency::transfer(&sender, &seller, listing_data.price, ExistenceRequirement::KeepAlive)?;
+
+        // Escrow Account
+        let escrow_account: T::AccountId = Self::get_escrow_account();
+
+        // Transfer out of escrow
+        Self::do_transfer(&escrow_account, &sender, listing_data.asset);
+
+        // Increment Order count
+        OrderCount::mutate(|id| -> Result<u64, DispatchError> {
+          let current_count = *id;
+          *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableOrderId)?;
+
+          Ok(current_count)
+        });
+
+        Self::deposit_event(RawEvent::WalletAssetBuySuccess(seller, sender, listing_data.asset.0, listing_data.asset.1));
+
+        Ok(())
       }
 
       #[weight = 10_000]
