@@ -133,6 +133,8 @@ decl_error! {
     ClaimingNotAllowed,
     /// Asset not found
     AssetNotFound,
+    /// Claim not found
+    ClaimNotFound,
     /// Maximum listings in Escrow
     NoAvailableListingId,
     /// Maximum claims made
@@ -263,7 +265,7 @@ decl_module! {
         ensure!(Listings::<T>::contains_key(&sender, listing_id), Error::<T>::AssetNotFound);
         
         // Get listing data
-        let listing_data = Listings::<T>::get(&sender, listing_id);
+        let listing_data = Listings::<T>::take(&sender, listing_id);
 
         //Escrow Account
         let escrow_account: T::AccountId = Self::get_escrow_account();
@@ -279,11 +281,7 @@ decl_module! {
           Ok(current_count)
         });
 
-        // Remove listing from storage
-        Listings::<T>::remove(sender, listing_id);
-
         AllListings::<T>::try_mutate(|asset_ids| -> DispatchResult {
-          // Check if the asset_id already in the owner
           let asset_index = asset_ids.iter().position(|x| *x == listing_data.asset).unwrap();
           asset_ids.remove(asset_index);
 
@@ -310,11 +308,33 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn claim(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
+      pub fn claim(origin, claim_id: ClaimId) -> DispatchResult{
 
-          let sender = ensure_signed(origin)?;
+        let sender = ensure_signed(origin)?;
+
+        // Check that the wallet has permission to claim assets
+        ensure!(T::AllowClaim::get(), Error::<T>::ClaimingNotAllowed);
+
+        // Ensure the claim is for this sender
+        ensure!(OpenClaims::<T>::contains_key(&sender, claim_id), Error::<T>::ClaimNotFound);
+
+        // Get listing data
+        let claim_data = OpenClaims::<T>::take(&sender, claim_id);
+
+        // Claim Account
+        let claim_account: T::AccountId = Self::get_claim_account();
+
+        // Transfer asset into the reciever's account
+        Self::do_transfer(&claim_account, &sender, claim_data.asset);
+
+        AllClaims::<T>::try_mutate(|asset_ids| -> DispatchResult {
+          let asset_index = asset_ids.iter().position(|x| *x == claim_data.asset).unwrap();
+          asset_ids.remove(asset_index);
 
           Ok(())
+        })?;
+
+        Ok(())
       }
 
     }
