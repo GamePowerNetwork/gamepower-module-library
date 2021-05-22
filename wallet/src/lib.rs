@@ -356,7 +356,11 @@ decl_module! {
         // Check that the wallet has permission to claim assets
         ensure!(T::AllowClaim::get(), Error::<T>::ClaimingNotAllowed);
 
-        // Ensure that the sender is the own of this class
+        // Check that the sender owns this asset
+        let check_ownership = Self::check_ownership(&sender, &asset)?;
+        ensure!(check_ownership, Error::<T>::NoPermission);
+
+        // Ensure that the sender is the owner of this class
         let class_info = AssetModule::<T>::classes(asset.0).ok_or(Error::<T>::AssetNotFound)?;
         ensure!(sender == class_info.owner, Error::<T>::NoPermission);
 
