@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use sp_std::vec::Vec;
 use orml_nft::Pallet as AssetModule;
 use gamepower_traits::*;
-use gamepower_primitives::{ Balance };
+use gamepower_primitives::{ BlockNumber, Balance, ListingId, ClaimId };
 
 #[cfg(test)]
 mod mock;
@@ -51,9 +51,9 @@ pub struct Listing<ClassIdOf, TokenIdOf, AccountId> {
 
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct Order<AccountId, ListingOf> {
-  pub listing: ListingOf,
-  pub buyer: AccountId,
+pub struct Claim<ClassIdOf, TokenIdOf, AccountId> {
+  pub receiver: AccountId,
+  pub asset: (ClassIdOf, TokenIdOf)
 }
 
 /// The module configuration trait.
@@ -82,18 +82,18 @@ pub trait Config: system::Config + orml_nft::Config {
 pub type ClassIdOf<T> = <T as orml_nft::Config>::ClassId;
 pub type TokenIdOf<T> = <T as orml_nft::Config>::TokenId;
 pub type ListingOf<T> = Listing<ClassIdOf<T>, TokenIdOf<T>, <T as frame_system::Config>::AccountId>;
-pub type OrderOf<T> = Order<<T as frame_system::Config>::AccountId, ListingOf<T>>;
+pub type ClaimOf<T> = Claim<ClassIdOf<T>, TokenIdOf<T>, <T as frame_system::Config>::AccountId>;
 
 decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
-    pub Listings get(fn listings): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) u64 => ListingOf<T>;
+    pub Listings get(fn listings): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) ListingId => ListingOf<T>;
 		pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
-    pub NextListingId get(fn next_listing_id): u64;
+    pub NextListingId get(fn next_listing_id): ListingId;
     pub ListingCount: u64;
-    pub Orders get(fn orders): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) u64 => OrderOf<T>;
-    pub AllOrders get(fn all_orders): Vec<OrderOf<T>>;
-    pub NextOrderId get(fn next_order_id): u64;
     pub OrderCount: u64;
+    pub OpenClaims get(fn open_claims): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) ClaimId => ClaimOf<T>;
+    pub AllClaims get(fn all_claims): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
+    pub NextClaimId get(fn next_claim_id): ClaimId;
   }
 }
 
@@ -108,6 +108,14 @@ decl_event!(
     WalletAssetTransferred(AccountId, AccountId, ClassId, TokenId),
     /// Asset successfully burned through the wallet [owner, classId, tokenId]
     WalletAssetBurned(AccountId, ClassId, TokenId),
+    /// Asset successfully listed through the wallet [owner, price, classId, tokenId]
+    WalletAssetListed(AccountId, Balance, ClassId, TokenId),
+    /// Asset successfully listed through the wallet [owner, classId, tokenId]
+    WalletAssetUnlisted(AccountId, ClassId, TokenId),
+    /// Asset successfully purchased through the wallet [seller, buyer, classId, tokenId]
+    WalletAssetPurchased(AccountId, AccountId, ClassId, TokenId),
+    /// Asset successfully purchased through the wallet [seller, buyer, classId, tokenId]
+    WalletAssetClaimed(AccountId, ClassId, TokenId),
   }
 );
 
@@ -119,14 +127,16 @@ decl_error! {
     BurningNotAllowed,
     /// Assets cannot be listed on the market
     EscrowNotAllowed,
-    /// Asset locked in Escrow
-    AssetLockedInEscrow,
+    /// Asset locked in Escrow or Claims
+    AssetLocked,
     /// Assets cannot be claimed
     ClaimingNotAllowed,
     /// Asset not found
     AssetNotFound,
     /// Maximum listings in Escrow
     NoAvailableListingId,
+    /// Maximum claims made
+    NoAvailableClaimId,
     /// No Permission for this action
     NoPermission,
   }
@@ -156,10 +166,8 @@ decl_module! {
         let check_ownership = Self::check_ownership(&sender, &asset)?;
         ensure!(check_ownership, Error::<T>::NoPermission);
 
-        // Ensure that the asset is not in Escrow
-        if T::AllowEscrow::get(){
-          ensure!(!Self::is_listed(&asset), Error::<T>::AssetLockedInEscrow);
-        }
+        // Ensure that the asset is not locked in Escrow or Claims
+        ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
 
         // Transfer the asset
         T::Transfer::transfer(&sender, &to, asset)?;
@@ -181,10 +189,8 @@ decl_module! {
         let check_ownership = Self::check_ownership(&sender, &asset)?;
         ensure!(check_ownership, Error::<T>::NoPermission);
 
-        // Check if the asset is in Escrow
-        if T::AllowEscrow::get(){
-          ensure!(!Self::is_listed(&asset), Error::<T>::AssetLockedInEscrow);
-        }
+        // Ensure that the asset is not locked in Escrow or Claims
+        ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
         
         // Burn the asset
         T::Burn::burn(&sender, asset)?;
@@ -207,13 +213,13 @@ decl_module! {
         ensure!(check_ownership, Error::<T>::NoPermission);
 
         // Ensure this asset isn't already listed
-        ensure!(!Self::is_listed(&asset), Error::<T>::NoPermission);
+        ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
         
         //Escrow Account
-        let escrow_account: T::AccountId = T::ModuleId::get().into_account();
+        let escrow_account: T::AccountId = Self::get_escrow_account();
 
         // Transfer into escrow
-        Self::escrow_transfer(&sender, &escrow_account, asset);
+        Self::do_transfer(&sender, &escrow_account, asset);
 
         // Create listing data
         let listing = Listing {
@@ -223,7 +229,7 @@ decl_module! {
         };
 
         // Add the new listing id to storage
-        let listing_id = NextListingId::try_mutate(|id| -> Result<u64, DispatchError> {
+        let listing_id = NextListingId::try_mutate(|id| -> Result<ListingId, DispatchError> {
           let current_id = *id;
           *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
 
@@ -246,7 +252,7 @@ decl_module! {
       }
 
       #[weight = 10_000]
-      pub fn unlist(origin, listing_id: u64) -> DispatchResult{
+      pub fn unlist(origin, listing_id: ListingId) -> DispatchResult{
 
         let sender = ensure_signed(origin)?;
 
@@ -260,10 +266,10 @@ decl_module! {
         let listing_data = Listings::<T>::get(&sender, listing_id);
 
         //Escrow Account
-        let escrow_account: T::AccountId = T::ModuleId::get().into_account();
+        let escrow_account: T::AccountId = Self::get_escrow_account();
 
         // Transfer out of escrow
-        Self::escrow_transfer(&escrow_account, &sender, listing_data.asset);
+        Self::do_transfer(&escrow_account, &sender, listing_data.asset);
 
         // Decrease Listing count
         ListingCount::mutate(|id| -> Result<u64, DispatchError> {
@@ -319,19 +325,10 @@ impl<T: Config> Module<T> {
   fn check_ownership(
     owner: &T::AccountId, 
     asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> Result<bool, DispatchError> {
-    let asset_info = AssetModule::<T>::tokens(asset.0, asset.1).ok_or(Error::<T>::AssetNotFound)?;
-    if owner == &asset_info.owner {
-      return Ok(true);
-    }
-    
-    return Ok(false);
+    return Ok(AssetModule::<T>::is_owner(&owner, *asset));
   }
 
-  fn is_listed(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-    return Self::all_listings().contains(asset);
-  }
-
-  fn escrow_transfer(
+  fn do_transfer(
     from: &T::AccountId,
     to: &T::AccountId,
     asset: (ClassIdOf<T>, TokenIdOf<T>)) -> Result<bool, DispatchError>
@@ -339,12 +336,81 @@ impl<T: Config> Module<T> {
     AssetModule::<T>::transfer(&from, &to, asset);
     return Ok(true)
   }
+
+  fn is_listed(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+    return Self::all_listings().contains(asset);
+  }
+
+  fn is_claiming(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+    return Self::all_claims().contains(asset);
+  }
+
+  fn get_claim_account() -> T::AccountId {
+    return T::ModuleId::get().into_sub_account(100u32);
+  }
+
+  fn get_escrow_account() -> T::AccountId {
+    return T::ModuleId::get().into_account();
+  }
+
+  pub fn is_locked(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+    return Self::is_listed(&asset) || Self::is_claiming(&asset);
+  }
+
+  pub fn create_claim(
+    owner: &T::AccountId,
+    receiver: &T::AccountId,
+    asset: (ClassIdOf<T>, TokenIdOf<T>)
+  ) -> DispatchResult {
+    // Get claim account
+    let claim_account: T::AccountId = Self::get_claim_account();
+
+    // Transfer asset into the claim account
+    Self::do_transfer(&owner, &claim_account, asset);
+
+    // Create claim data
+    let claim = Claim {
+      receiver: receiver.clone(),
+      asset,
+    };
+
+    // Add the new claim id to storage
+    let claim_id = NextClaimId::try_mutate(|id| -> Result<ClaimId, DispatchError> {
+      let current_id = *id;
+      *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableClaimId)?;
+
+      Ok(current_id)
+    })?;
+
+    // Add claim to storage
+    OpenClaims::<T>::insert(receiver, claim_id, claim);
+    AllClaims::<T>::append(&asset);
+
+    Ok(())
+  }
+
+  pub fn create_batch_claims_by_class(
+    class_id: ClassIdOf<T>,
+    quantity: u32
+  ) -> DispatchResult {
+    // Get claim account
+    let claim_account: T::AccountId = Self::get_claim_account();
+    Ok(())
+  }
+
+  pub fn create_batch_claims_by_tokens(
+    tokens: Vec<(ClassIdOf<T>, TokenIdOf<T>)>,
+  ) -> DispatchResult {
+    // Get claim account
+    let claim_account: T::AccountId = Self::get_claim_account();
+    Ok(())
+  }
 }
 
 // Implement OnTransferHandler
 impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
   fn transfer(from: &T::AccountId, to: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
-    AssetModule::<T>::transfer(&from, &to, asset)?;
+    Self::do_transfer(&from, &to, asset)?;
     Ok(())
   }
 }
