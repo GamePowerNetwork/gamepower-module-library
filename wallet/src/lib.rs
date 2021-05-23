@@ -90,7 +90,8 @@ decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
 
 	/// Get one or more listings by AccountId or a single listing including the listing_id
-	pub Listings get(fn listings): double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ListingId => ListingOf<T>;
+	pub Listings get(fn listings):
+		double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ListingId => ListingOf<T>;
 	/// Get a vector of all listings. Used as a quick lookup.
 	pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
 	/// Get the next listing id
@@ -100,13 +101,15 @@ decl_storage! {
 	/// A count of all orders made through the wallet
 	pub OrderCount: u64;
 	/// Get one or more claims by AccountId or a single claim including the claim_id
-	pub OpenClaims get(fn open_claims): double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ClaimId => ClaimOf<T>;
+	pub OpenClaims get(fn open_claims):
+		double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ClaimId => ClaimOf<T>;
 	/// Get a vector of all claims. Used as a quick lookup.
 	pub AllClaims get(fn all_claims): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
 	/// Get the next claim id
 	pub NextClaimId get(fn next_claim_id): ClaimId;
 	/// Emotes used by the wallet
-	pub Emotes get(fn emotes): double_map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>), hasher(twox_64_concat) T::AccountId => Vec<u8>;
+	pub Emotes get(fn emotes):
+		double_map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>), hasher(twox_64_concat) T::AccountId => Vec<Vec<u8>>;
   }
 }
 
@@ -134,6 +137,8 @@ decl_event!(
     WalletClaimCreated(AccountId, AccountId, ClassId, TokenId),
     /// Asset buy successful [seller, buyer, classId, tokenId, price]
     WalletAssetBuySuccess(AccountId, AccountId, ClassId, TokenId, Balance),
+	/// New Emote posted [poster, classId, tokenId, emote]
+	WalletAssetEmotePosted(AccountId, ClassId, TokenId, Vec<u8>),
   }
 );
 
@@ -377,8 +382,16 @@ decl_module! {
 		  // Get emoji
 		  let emoji = emojis::lookup(str_emote).unwrap().as_str().as_bytes().to_vec();
 
+		  // Get listing data
+		  let mut emotes_data = Emotes::<T>::get(asset, &sender);
+
+		  // Append the new emoji
+		  emotes_data.push(emoji.clone());
+
 		  // Add listing to storage
-		  Emotes::<T>::insert(asset, sender, emoji);
+		  Emotes::<T>::insert(asset, &sender, emotes_data);
+
+		  Self::deposit_event(RawEvent::WalletAssetEmotePosted(sender, asset.0, asset.1, emoji));
 
           Ok(())
       }
