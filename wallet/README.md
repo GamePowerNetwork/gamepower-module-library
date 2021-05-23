@@ -1,6 +1,6 @@
 # GamePower Wallet Pallet
 
-[![Twitter URL](https://img.shields.io/twitter/url?style=social&url=https%3A%2F%2Ftwitter.com%2FGamePowerNet)](https://twitter.com/AcalaNetwork)
+[![Twitter URL](https://img.shields.io/twitter/url?style=social&url=https%3A%2F%2Ftwitter.com%2FGamePowerNet)](https://twitter.com/GamePowerNet)
 [![Discord](https://img.shields.io/badge/Discord-gray?logo=discord)](https://discord.gg/em75apGJZV)
 
 ## Getting Started
