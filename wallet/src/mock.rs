@@ -88,7 +88,7 @@ impl balances::Config for Test {
 }
 
 parameter_types! {
-  pub AllowTransfer: bool = true;
+  	pub AllowTransfer: bool = true;
 	pub AllowBurn: bool = true;
 	pub AllowEscrow: bool = true;
 	pub AllowClaim: bool = true;
@@ -96,7 +96,7 @@ parameter_types! {
 }
 
 impl gamepower_wallet::Config for Test {
-  type Event = Event;
+  	type Event = Event;
 	type Transfer = GamePowerWallet;
 	type Burn = GamePowerWallet;
 	type Claim = GamePowerWallet;
@@ -122,6 +122,8 @@ pub const CLASS_ID: <Test as orml_nft::Config>::ClassId = 0;
 pub const CLASS_ID_NOT_EXIST: <Test as orml_nft::Config>::ClassId = 1;
 pub const TOKEN_ID: <Test as orml_nft::Config>::TokenId = 0;
 pub const TOKEN_ID_NOT_EXIST: <Test as orml_nft::Config>::TokenId = 1;
+pub const LISTING_ID: u64 = 0;
+pub const LISTING_ID_NOT_EXIST: u64 = 1;
 
 /// Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {

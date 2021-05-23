@@ -27,11 +27,14 @@ gamepower-primitives = { default-features = false, path = '../primitives' }
 # Orml packages
 orml-nft = { default-features = false, version = '0.4.0' }
 
+# Emotes
+emojis = { default-features = false, version = "0.1.2" }
 
 [features]
 default = ['std']
 std = [
     'serde',
+	'emojis/std',
     'codec/std',
     'frame-support/std',
     'frame-system/std',

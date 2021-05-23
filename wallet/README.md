@@ -1,4 +1,4 @@
-# GamePower Wallet Pallet
+# GamePower Wallet Pallet 🕹
 
 [![Twitter URL](https://img.shields.io/twitter/url?style=social&url=https%3A%2F%2Ftwitter.com%2FGamePowerNet)](https://twitter.com/GamePowerNet)
 [![Discord](https://img.shields.io/badge/Discord-gray?logo=discord)](https://discord.gg/em75apGJZV)
@@ -45,13 +45,12 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic
 	{
         -- SNIP --
-        
+
         // Add this code
         OrmlNFT: orml_nft::{Module ,Storage},
 	}
 );
 ```
-
 # 2. Install GamePower Wallet Pallet
 ### Importing the GamePower Wallet pallet
 
@@ -106,7 +105,7 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic
 	{
         -- SNIP --
-        
+
         // Add this code
         GamePowerWallet: gamepower_wallet::{Module, Call, Storage, Event<T>},
 	}
@@ -116,7 +115,7 @@ construct_runtime!(
 ## Test Pallet
 
 ```
-cargo test
+cargo +nightly test
 ```
 
 ## Documentation

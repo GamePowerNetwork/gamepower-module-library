@@ -87,15 +87,25 @@ type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Con
 
 decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
-    pub Listings get(fn listings): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) ListingId => ListingOf<T>;
-		pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
-    pub NextListingId get(fn next_listing_id): ListingId;
-    pub ListingCount: u64;
-    pub OrderCount: u64;
-    pub OpenClaims get(fn open_claims): double_map hasher(blake2_128_concat) T::AccountId, hasher(blake2_128_concat) ClaimId => ClaimOf<T>;
-    pub AllClaims get(fn all_claims): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
-    pub NextClaimId get(fn next_claim_id): ClaimId;
-    pub Emotes get(fn emotes): map hasher(blake2_128_concat) (ClassIdOf<T>, TokenIdOf<T>) => Vec<u8>;
+
+	/// Get one or more listings by AccountId or a single listing including the listing_id
+	pub Listings get(fn listings): double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ListingId => ListingOf<T>;
+	/// Get a vector of all listings. Used as a quick lookup.
+	pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
+	/// Get the next listing id
+	pub NextListingId get(fn next_listing_id): ListingId;
+	/// A fast and simple count of all current listings
+	pub ListingCount: u64;
+	/// A count of all orders made through the wallet
+	pub OrderCount: u64;
+	/// Get one or more claims by AccountId or a single claim including the claim_id
+	pub OpenClaims get(fn open_claims): double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ClaimId => ClaimOf<T>;
+	/// Get a vector of all claims. Used as a quick lookup.
+	pub AllClaims get(fn all_claims): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
+	/// Get the next claim id
+	pub NextClaimId get(fn next_claim_id): ClaimId;
+	/// Emotes used by the wallet
+	pub Emotes get(fn emotes): double_map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>), hasher(twox_64_concat) T::AccountId => Vec<u8>;
   }
 }
 
@@ -204,7 +214,7 @@ decl_module! {
 
         // Ensure that the asset is not locked in Escrow or Claims
         ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
-        
+
         // Burn the asset
         T::Burn::burn(&sender, asset)?;
 
@@ -227,7 +237,7 @@ decl_module! {
 
         // Ensure this asset isn't already listed
         ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
-        
+
         //Escrow Account
         let escrow_account: T::AccountId = Self::get_escrow_account();
 
@@ -276,7 +286,7 @@ decl_module! {
 
         // Ensure the listing is in storage for this user
         ensure!(Listings::<T>::contains_key(&sender, listing_id), Error::<T>::AssetNotFound);
-        
+
         // Get listing data
         let listing_data = Listings::<T>::take(&sender, listing_id);
 
@@ -337,7 +347,15 @@ decl_module! {
           Ok(current_count)
         });
 
-        Self::deposit_event(RawEvent::WalletAssetBuySuccess(seller, sender, listing_data.asset.0, listing_data.asset.1, listing_data.price));
+        Self::deposit_event(
+			RawEvent::WalletAssetBuySuccess(
+				seller,
+				sender,
+				listing_data.asset.0,
+				listing_data.asset.1,
+				listing_data.price
+			)
+		);
 
         Ok(())
       }
@@ -346,6 +364,12 @@ decl_module! {
       pub fn emote(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), emote: Vec<u8>) -> DispatchResult{
 
           let sender = ensure_signed(origin)?;
+
+		  // lookup emoji
+		  let emoji:Vec<u8> = emojis::lookup("raised_eyebrow").unwrap().as_str().as_bytes().to_vec();
+
+		  // Add listing to storage
+		  Emotes::<T>::insert(asset, sender, emoji);
 
           Ok(())
       }
@@ -401,7 +425,7 @@ decl_module! {
         // Ensure the claim is created
         let claim_created = Self::do_create_claim(&sender, &receiver, asset)?;
         ensure!(claim_created, Error::<T>::ClaimCreateFailed);
-        
+
         Self::deposit_event(RawEvent::WalletClaimCreated(sender, receiver, asset.0, asset.1));
 
         Ok(())
@@ -412,89 +436,73 @@ decl_module! {
 
 // Module Implementation
 impl<T: Config> Module<T> {
-  fn check_ownership(
-    owner: &T::AccountId, 
-    asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> Result<bool, DispatchError> {
-    return Ok(AssetModule::<T>::is_owner(&owner, *asset));
-  }
+	fn check_ownership(
+    	owner: &T::AccountId,
+    	asset: &(ClassIdOf<T>, TokenIdOf<T>)
+	) -> Result<bool, DispatchError> {
+    	return Ok(AssetModule::<T>::is_owner(&owner, *asset));
+  	}
 
-  fn do_transfer(
-    from: &T::AccountId,
-    to: &T::AccountId,
-    asset: (ClassIdOf<T>, TokenIdOf<T>)) -> Result<bool, DispatchError>
-  {
-    AssetModule::<T>::transfer(&from, &to, asset);
-    return Ok(true)
-  }
+  	fn do_transfer(
+    	from: &T::AccountId,
+    	to: &T::AccountId,
+    	asset: (ClassIdOf<T>, TokenIdOf<T>)
+	) -> Result<bool, DispatchError> {
+    	AssetModule::<T>::transfer(&from, &to, asset);
+    	return Ok(true)
+  	}
 
-  fn is_listed(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-    return Self::all_listings().contains(asset);
-  }
+	fn is_listed(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+		return Self::all_listings().contains(asset);
+	}
 
-  fn is_claiming(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-    return Self::all_claims().contains(asset);
-  }
+	fn is_claiming(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+		return Self::all_claims().contains(asset);
+	}
 
-  fn get_claim_account() -> T::AccountId {
-    return T::ModuleId::get().into_sub_account(100u32);
-  }
+	fn get_claim_account() -> T::AccountId {
+		return T::ModuleId::get().into_sub_account(100u32);
+	}
 
-  fn get_escrow_account() -> T::AccountId {
-    return T::ModuleId::get().into_account();
-  }
+	fn get_escrow_account() -> T::AccountId {
+		return T::ModuleId::get().into_account();
+	}
 
-  pub fn is_locked(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-    return Self::is_listed(&asset) || Self::is_claiming(&asset);
-  }
+	pub fn is_locked(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+		return Self::is_listed(&asset) || Self::is_claiming(&asset);
+	}
 
-  fn do_create_claim(
-    owner: &T::AccountId,
-    receiver: &T::AccountId,
-    asset: (ClassIdOf<T>, TokenIdOf<T>)
-  ) -> Result<bool, DispatchError> {
-    // Get claim account
-    let claim_account: T::AccountId = Self::get_claim_account();
+	fn do_create_claim(
+		owner: &T::AccountId,
+		receiver: &T::AccountId,
+		asset: (ClassIdOf<T>, TokenIdOf<T>)
+	) -> Result<bool, DispatchError> {
+		// Get claim account
+		let claim_account: T::AccountId = Self::get_claim_account();
 
-    // Transfer asset into the claim account
-    Self::do_transfer(&owner, &claim_account, asset);
+		// Transfer asset into the claim account
+		Self::do_transfer(&owner, &claim_account, asset);
 
-    // Create claim data
-    let claim = Claim {
-      receiver: receiver.clone(),
-      asset,
-    };
+		// Create claim data
+		let claim = Claim {
+		receiver: receiver.clone(),
+		asset,
+		};
 
-    // Add the new claim id to storage
-    let claim_id = NextClaimId::try_mutate(|id| -> Result<ClaimId, DispatchError> {
-      let current_id = *id;
-      *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableClaimId)?;
+		// Add the new claim id to storage
+		let claim_id = NextClaimId::try_mutate(|id| -> Result<ClaimId, DispatchError> {
+		let current_id = *id;
+		*id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableClaimId)?;
 
-      Ok(current_id)
-    })?;
+		Ok(current_id)
+		})?;
 
-    // Add claim to storage
-    OpenClaims::<T>::insert(receiver, claim_id, claim);
-    AllClaims::<T>::append(&asset);
+		// Add claim to storage
+		OpenClaims::<T>::insert(receiver, claim_id, claim);
+		AllClaims::<T>::append(&asset);
 
-    Ok(true)
-  }
-
-  pub fn create_batch_claims_by_class(
-    class_id: ClassIdOf<T>,
-    quantity: u32
-  ) -> DispatchResult {
-    // Get claim account
-    let claim_account: T::AccountId = Self::get_claim_account();
-    Ok(())
-  }
-
-  pub fn create_batch_claims_by_tokens(
-    tokens: Vec<(ClassIdOf<T>, TokenIdOf<T>)>,
-  ) -> DispatchResult {
-    // Get claim account
-    let claim_account: T::AccountId = Self::get_claim_account();
-    Ok(())
-  }
+		Ok(true)
+	}
 }
 
 // Implement OnTransferHandler
