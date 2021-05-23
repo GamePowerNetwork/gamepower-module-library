@@ -19,6 +19,7 @@ sp-io = { version = "3.0.0", default-features = false }
 sp-core = { version = "3.0.0", default-features = false }
 sp-runtime = { version = "3.0.0", default-features = false }
 sp-std = { version = "3.0.0", default-features = false }
+balances = { package = "pallet-balances", version = "3.0.0", default-features = false }
 
 gamepower-traits = { default-features = false, path = '../traits' }
 gamepower-primitives = { default-features = false, path = '../primitives' }
@@ -41,4 +42,5 @@ std = [
     'gamepower-traits/std',
     'gamepower-primitives/std',
     'orml-nft/std',
+    'balances/std',
 ]

@@ -168,7 +168,7 @@ decl_module! {
       const AllowClaim: bool = T::AllowClaim::get();
 
       #[weight = 10_000]
-      pub fn transfer(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), to: T::AccountId) -> DispatchResult{
+      pub fn transfer(origin, to: T::AccountId, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
 
         let sender = ensure_signed(origin)?;
 
