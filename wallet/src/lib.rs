@@ -31,6 +31,7 @@ use sp_runtime::{
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_std::vec::Vec;
+use sp_std::str;
 use orml_nft::Pallet as AssetModule;
 use gamepower_traits::*;
 use gamepower_primitives::{ BlockNumber, ListingId, ClaimId };
@@ -160,6 +161,8 @@ decl_error! {
     NoAvailableClaimId,
     /// Maximum orders in Escrow
     NoAvailableOrderId,
+	/// Invalid Emote
+	InvalidEmote,
     /// No Permission for this action
     NoPermission,
   }
@@ -365,8 +368,14 @@ decl_module! {
 
           let sender = ensure_signed(origin)?;
 
-		  // lookup emoji
-		  let emoji:Vec<u8> = emojis::lookup("raised_eyebrow").unwrap().as_str().as_bytes().to_vec();
+		  // Convert the emote to a string
+		  let str_emote = str::from_utf8(&emote).unwrap();
+
+		  // Ensure this is a valid emote
+		  ensure!(!emojis::lookup(str_emote).is_none(), Error::<T>::InvalidEmote);
+
+		  // Get emoji
+		  let emoji = emojis::lookup(str_emote).unwrap().as_str().as_bytes().to_vec();
 
 		  // Add listing to storage
 		  Emotes::<T>::insert(asset, sender, emoji);

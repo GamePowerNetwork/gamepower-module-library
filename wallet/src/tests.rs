@@ -170,7 +170,7 @@ fn emote_should_work() {
     assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
 	// Post a valid emote
-    assert_ok!(GamePowerWallet::emote(Origin::signed(2), (CLASS_ID, TOKEN_ID), "U+1F600".as_bytes().to_vec()));
+    assert_ok!(GamePowerWallet::emote(Origin::signed(2), (CLASS_ID, TOKEN_ID), "fish".as_bytes().to_vec()));
   });
 }
 
@@ -182,7 +182,14 @@ fn emote_should_fail() {
     assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
 	// Post an invalid emote for a class that doesn't exist
-    assert_ok!(GamePowerWallet::emote(Origin::signed(2), (CLASS_ID_NOT_EXIST, TOKEN_ID), "U+1F600".as_bytes().to_vec()));
+    assert_noop!(
+		GamePowerWallet::emote(
+			Origin::signed(2),
+			(CLASS_ID_NOT_EXIST, TOKEN_ID),
+			"fasdfasdfaish".as_bytes().to_vec()
+		),
+		Error::<Test>::InvalidEmote
+	);
   });
 }
 
