@@ -373,6 +373,9 @@ decl_module! {
 
           let sender = ensure_signed(origin)?;
 
+		  // Ensure this token exists
+		  ensure!(!AssetModule::<T>::tokens(asset.0, asset.1).is_none(), Error::<T>::AssetNotFound);
+
 		  // Convert the emote to a string
 		  let str_emote = str::from_utf8(&emote).unwrap();
 

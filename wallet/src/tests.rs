@@ -185,13 +185,33 @@ fn emote_should_fail() {
     assert_noop!(
 		GamePowerWallet::emote(
 			Origin::signed(2),
-			(CLASS_ID_NOT_EXIST, TOKEN_ID),
+			(CLASS_ID, TOKEN_ID),
 			"fasdfasdfaish".as_bytes().to_vec()
 		),
 		Error::<Test>::InvalidEmote
 	);
   });
 }
+
+#[test]
+fn emote_should_fail_for_invalid_token() {
+  new_test_ext().execute_with(|| {
+	// Create NFT
+    assert_ok!(OrmlNFT::create_class(&ALICE, vec![1], ()));
+    assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
+
+	// Post an invalid emote for a class that doesn't exist
+    assert_noop!(
+		GamePowerWallet::emote(
+			Origin::signed(2),
+			(CLASS_ID_NOT_EXIST, TOKEN_ID),
+			"fish".as_bytes().to_vec()
+		),
+		Error::<Test>::AssetNotFound
+	);
+  });
+}
+
 
 #[test]
 fn locked_asset_should_fail() {
