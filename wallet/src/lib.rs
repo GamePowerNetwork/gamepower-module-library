@@ -72,7 +72,7 @@ pub trait Config: system::Config + orml_nft::Config {
   /// Wallet Burn Handler
   type Burn: OnBurnHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
   /// Wallet Claim Handler
-  type Claim: OnClaimHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
+  //type Claim: OnClaimHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
   /// Allow assets to be transferred through the wallet
   type AllowTransfer: Get<bool>;
   /// Allow assets to be burned from the wallet
