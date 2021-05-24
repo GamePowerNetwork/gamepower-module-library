@@ -64,6 +64,8 @@ decl_module! {
   pub struct Module<T: Config> for enum Call where origin: T::Origin {
     type Error = Error<T>;
 
+	pub fn deposit_event() = default;
+
 	/// Class creation
 	/// The wallet needs a way to creat classes which are buckets that hold minted assets.
 	///
