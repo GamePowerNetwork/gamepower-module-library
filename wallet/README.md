@@ -129,3 +129,7 @@ cargo doc --open --package gamepower-wallet
 ```
 cargo +nightly build --release
 ```
+
+
+## GamePower Wallet Example
+If you would like to learn how to integrate your existing pallet into the GamePower Wallet visit the [gamepower-wallet-template](https://github.com/GamePowerNetwork/gamepower-wallet-template) repo.
