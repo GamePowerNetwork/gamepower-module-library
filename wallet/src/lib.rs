@@ -46,8 +46,10 @@ mod tests;
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 /// Listing data
 pub struct Listing<ClassIdOf, TokenIdOf, AccountId, Balance> {
-	/// Owner of the listing
-	pub owner: AccountId,
+	/// Listing Id
+	pub id: ListingId,
+	/// Seller of the listing
+	pub seller: AccountId,
 	/// Asset - (class_id, token_id)
 	pub asset: (ClassIdOf, TokenIdOf),
 	/// Price of the asset listed
@@ -63,6 +65,19 @@ pub struct Claim<ClassIdOf, TokenIdOf, AccountId> {
 	/// Asset - (class_id, token_id)
 	pub asset: (ClassIdOf, TokenIdOf)
 }
+
+#[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+/// Order data
+pub struct Order<ListingOf, AccountId, BlockNumber> {
+	/// order listing
+	pub listing: ListingOf,
+	/// order buyer
+	pub buyer: AccountId,
+	/// genesis block
+	pub block: BlockNumber,
+}
+
 
 /// The module configuration trait.
 pub trait Config: system::Config + orml_nft::Config {
@@ -92,17 +107,22 @@ pub type ClassIdOf<T> = <T as orml_nft::Config>::ClassId;
 /// Token Id
 pub type TokenIdOf<T> = <T as orml_nft::Config>::TokenId;
 /// Listing Data
-pub type ListingOf<T> = Listing<ClassIdOf<T>, TokenIdOf<T>, <T as frame_system::Config>::AccountId, BalanceOf<T>>;
+pub type ListingOf<T> = Listing<ClassIdOf<T>, TokenIdOf<T>, <T as system::Config>::AccountId, BalanceOf<T>>;
 /// Claim Data
-pub type ClaimOf<T> = Claim<ClassIdOf<T>, TokenIdOf<T>, <T as frame_system::Config>::AccountId>;
-type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+pub type ClaimOf<T> = Claim<ClassIdOf<T>, TokenIdOf<T>, <T as system::Config>::AccountId>;
+/// Order Data
+pub type OrderOf<T> = Order<ListingOf<T>, <T as system::Config>::AccountId, <T as system::Config>::BlockNumber>;
+type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as system::Config>::AccountId>>::Balance;
 
 decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
 
-	/// Get one or more listings by AccountId or a single listing including the listing_id
+	/// Get a listing by the listing_id
 	pub Listings get(fn listings):
-		double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ListingId => ListingOf<T>;
+		map hasher(twox_64_concat) ListingId => ListingOf<T>;
+	/// Get all listings ids by an account
+	pub ListingsByOwner get(fn listings_by_owner):
+		map hasher(blake2_128_concat) T::AccountId => ListingId;
 	/// Get a vector of all listings. Used as a quick lookup.
 	pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
 	/// Get the next listing id
@@ -111,6 +131,9 @@ decl_storage! {
 	pub ListingCount: u64;
 	/// A count of all orders made through the wallet
 	pub OrderCount: u64;
+	/// A history of orders for an asset
+	pub OrderHistory get(fn order_history):
+		map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>) => OrderOf<T>;
 	/// Get one or more claims by AccountId or a single claim including the claim_id
 	pub OpenClaims get(fn open_claims):
 		double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ClaimId => ClaimOf<T>;
@@ -136,10 +159,10 @@ decl_event!(
     WalletAssetTransferred(AccountId, AccountId, ClassId, TokenId),
     /// Asset successfully burned through the wallet [owner, classId, tokenId]
     WalletAssetBurned(AccountId, ClassId, TokenId),
-    /// Asset successfully listed through the wallet [owner, price, classId, tokenId]
-    WalletAssetListed(AccountId, Balance, ClassId, TokenId),
-    /// Asset successfully listed through the wallet [owner, classId, tokenId]
-    WalletAssetUnlisted(AccountId, ClassId, TokenId),
+    /// Asset successfully listed through the wallet [owner, price, listingId,, classId, tokenId]
+    WalletAssetListed(AccountId, Balance, ListingId, ClassId, TokenId),
+    /// Asset successfully unlisted through the wallet [owner, listingId, classId, tokenId]
+    WalletAssetUnlisted(AccountId, ListingId, ClassId, TokenId),
     /// Asset successfully purchased through the wallet [seller, buyer, classId, tokenId]
     WalletAssetPurchased(AccountId, AccountId, ClassId, TokenId),
     /// Asset successfully purchased through the wallet [receiver, classId, tokenId]
@@ -173,6 +196,8 @@ decl_error! {
 	ClaimCancelled,
     /// Asset not found
     AssetNotFound,
+	/// Listing not found
+    ListingNotFound,
     /// Claim not found
     ClaimNotFound,
     /// Claim creation failed
@@ -276,13 +301,6 @@ decl_module! {
 			// Transfer into escrow
 			Self::do_transfer(&sender, &escrow_account, asset).ok();
 
-			// Create listing data
-			let listing = Listing {
-				owner: sender.clone(),
-				asset,
-				price,
-			};
-
 			// Add the new listing id to storage
 			let listing_id = NextListingId::try_mutate(|id| -> Result<ListingId, DispatchError> {
 				let current_id = *id;
@@ -290,6 +308,14 @@ decl_module! {
 
 				Ok(current_id)
 			})?;
+
+			// Create listing data
+			let listing = Listing {
+				id: listing_id,
+				seller: sender.clone(),
+				asset,
+				price,
+			};
 
 			// Increment Listing count
 			ListingCount::mutate(|id| -> Result<u64, DispatchError> {
@@ -300,10 +326,11 @@ decl_module! {
 			}).ok();
 
 			// Add listing to storage
-			Listings::<T>::insert(&sender, listing_id, listing);
+			Listings::<T>::insert(listing_id, listing);
+			ListingsByOwner::<T>::insert(&sender, listing_id);
 			AllListings::<T>::append(&asset);
 
-			Self::deposit_event(RawEvent::WalletAssetListed(sender, price, asset.0, asset.1));
+			Self::deposit_event(RawEvent::WalletAssetListed(sender, price, listing_id, asset.0, asset.1));
 
 			Ok(())
 		}
@@ -319,11 +346,11 @@ decl_module! {
 			// Check that the wallet has permission to list assets
 			ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
 
-			// Ensure the listing is in storage for this user
-			ensure!(Listings::<T>::contains_key(&sender, listing_id), Error::<T>::AssetNotFound);
-
 			// Get listing data
-			let listing_data = Listings::<T>::get(&sender, listing_id);
+			let listing_data = Listings::<T>::get(listing_id);
+
+			// Ensure the listing is in storage for this user
+			ensure!(sender == listing_data.seller, Error::<T>::NoPermission);
 
 			//Escrow Account
 			let escrow_account: T::AccountId = Self::get_escrow_account();
@@ -347,9 +374,9 @@ decl_module! {
 			})?;
 
 			// remove the listing
-			Listings::<T>::remove(&sender, listing_id);
+			Listings::<T>::remove(listing_id);
 
-			Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_data.asset.0, listing_data.asset.1));
+			Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_id, listing_data.asset.0, listing_data.asset.1));
 
 			Ok(())
 		}
@@ -359,21 +386,21 @@ decl_module! {
 		/// - `seller`: account selling the asset
 		/// - `listing_id`: id of the Listing
 		#[weight = 10_000]
-		pub fn buy(origin, seller:T::AccountId, listing_id: ListingId) -> DispatchResult{
+		pub fn buy(origin, listing_id: ListingId) -> DispatchResult{
 
 			let sender = ensure_signed(origin)?;
 
 			// Check that the wallet has permission to list assets
 			ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
 
-			// Ensure the listing is in storage for this user
-			ensure!(Listings::<T>::contains_key(&seller, listing_id), Error::<T>::AssetNotFound);
+			// Ensure the listing is in storage
+			ensure!(Listings::<T>::contains_key(listing_id), Error::<T>::ListingNotFound);
 
 			// Get listing data
-			let listing_data = Listings::<T>::take(&seller, listing_id);
+			let listing_data = Listings::<T>::take(listing_id);
 
 			// Transfer funds to seller
-			<T as Config>::Currency::transfer(&sender, &seller, listing_data.price, ExistenceRequirement::KeepAlive)?;
+			<T as Config>::Currency::transfer(&sender, &listing_data.seller, listing_data.price, ExistenceRequirement::KeepAlive)?;
 
 			// Escrow Account
 			let escrow_account: T::AccountId = Self::get_escrow_account();
@@ -389,9 +416,22 @@ decl_module! {
 				Ok(current_count)
 			}).ok();
 
+			// Get the current block for this order
+			let block_number = <system::Module<T>>::block_number();
+
+			// Create order data
+			let order = Order {
+				listing: listing_data.clone(),
+				buyer: sender.clone(),
+				block: block_number,
+			};
+
+			// Save order history
+			OrderHistory::<T>::insert(order.listing.asset, order);
+
 			Self::deposit_event(
 				RawEvent::WalletAssetBuySuccess(
-					seller,
+					listing_data.seller,
 					sender,
 					listing_data.asset.0,
 					listing_data.asset.1,

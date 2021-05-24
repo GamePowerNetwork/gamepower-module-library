@@ -104,7 +104,7 @@ fn unlisting_should_fail() {
     assert_ok!(GamePowerWallet::list(Origin::signed(1), (CLASS_ID, TOKEN_ID), 100));
 
 	// Try to unlist a listing that doesn't belong to the original signer
-	assert_noop!(GamePowerWallet::unlist(Origin::signed(2), LISTING_ID), Error::<Test>::AssetNotFound);
+	assert_noop!(GamePowerWallet::unlist(Origin::signed(2), LISTING_ID), Error::<Test>::NoPermission);
   });
 }
 
@@ -143,7 +143,7 @@ fn buy_should_work() {
     assert_ok!(GamePowerWallet::list(Origin::signed(1), (CLASS_ID, TOKEN_ID), 100));
 
 	// Make a valid purchase
-    assert_ok!(GamePowerWallet::buy(Origin::signed(2), ALICE, LISTING_ID));
+    assert_ok!(GamePowerWallet::buy(Origin::signed(2), LISTING_ID));
   });
 }
 
@@ -157,8 +157,8 @@ fn buy_should_fail() {
 	// Create a valid listing
     assert_ok!(GamePowerWallet::list(Origin::signed(1), (CLASS_ID, TOKEN_ID), 100));
 
-	// Try to buy a listing not being sold my the original seller
-    assert_noop!(GamePowerWallet::buy(Origin::signed(2), BOB, LISTING_ID), Error::<Test>::AssetNotFound);
+	// Try to buy a listing not being sold
+    assert_noop!(GamePowerWallet::buy(Origin::signed(2), LISTING_ID_NOT_EXIST), Error::<Test>::ListingNotFound);
   });
 }
 
