@@ -16,6 +16,7 @@ fn transfer_should_work() {
   });
 }
 
+#[test]
 fn transfer_should_fail() {
   new_test_ext().execute_with(|| {
 	// Create NFT
@@ -24,7 +25,7 @@ fn transfer_should_fail() {
 
 	// Try to transfer a token for a class that doesn't exist
     assert_noop!(
-      GamePowerWallet::transfer(Origin::signed(2), ALICE, (CLASS_ID_NOT_EXIST, TOKEN_ID)),
+      GamePowerWallet::transfer(Origin::signed(2), ALICE, (CLASS_ID_NOT_EXIST, TOKEN_ID_NOT_EXIST)),
       Error::<Test>::NoPermission
     );
   });

@@ -4,15 +4,13 @@ use super::*;
 
 use crate as gamepower_wallet;
 use balances;
-use codec::{Decode, Encode};
 use frame_support::{
-	construct_runtime, parameter_types,
+	parameter_types,
 	traits::{Filter, InstanceFilter},
-	RuntimeDebug, impl_outer_origin,
 };
 use frame_system as system;
 use gamepower_primitives::{WalletAssetData, WalletClassData};
-use sp_core::{crypto::AccountId32, H256};
+use sp_core::{H256};
 use sp_runtime::ModuleId;
 use sp_runtime::{
   testing::Header,

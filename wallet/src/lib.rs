@@ -169,8 +169,8 @@ decl_event!(
     WalletAssetClaimed(AccountId, ClassId, TokenId),
     /// Asset claim created [creator, receiver, classId, tokenId]
     WalletClaimCreated(AccountId, AccountId, ClassId, TokenId),
-    /// Asset buy successful [seller, buyer, classId, tokenId, price]
-    WalletAssetBuySuccess(AccountId, AccountId, ClassId, TokenId, Balance),
+    /// Asset buy successful [seller, buyer, listingId, price]
+    WalletAssetBuySuccess(AccountId, AccountId, ListingId, Balance),
 	/// New Emote posted [poster, classId, tokenId, emote]
 	WalletAssetEmotePosted(AccountId, ClassId, TokenId, Vec<u8>),
   }
@@ -198,6 +198,8 @@ decl_error! {
     AssetNotFound,
 	/// Listing not found
     ListingNotFound,
+	/// Listing not found
+    UnlistingFailed,
     /// Claim not found
     ClaimNotFound,
     /// Claim creation failed
@@ -363,40 +365,9 @@ decl_module! {
 			// Ensure the listing is in storage for this user
 			ensure!(sender == listing_data.seller, Error::<T>::NoPermission);
 
-			//Escrow Account
-			let escrow_account: T::AccountId = Self::get_escrow_account();
-
-			// Transfer out of escrow
-			Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
-
-			// Decrease Listing count
-			ListingCount::mutate(|id| -> Result<u64, DispatchError> {
-				let current_count = *id;
-				*id = id.checked_sub(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
-
-				Ok(current_count)
-			}).ok();
-
-			// Remove the asset from all listings
-			AllListings::<T>::try_mutate(|asset_ids| -> DispatchResult {
-				let asset_index = asset_ids.iter().position(|x| *x == listing_data.asset).unwrap();
-				asset_ids.remove(asset_index);
-
-				Ok(())
-			})?;
-
-			// remove the listing
-			Listings::<T>::remove(listing_id);
-
-			// Remove listing from owner
-			// Get owner listing data
-			let mut owner_data = ListingsByOwner::<T>::get(&sender);
-
-			// Remove the old listing id
-			owner_data.retain(|&x| x != listing_id);
-
-			// Update owner listings
-			ListingsByOwner::<T>::insert(&sender, owner_data);
+			// Ensure listing was removed
+			let is_unlisted = Self::do_unlist(&sender, listing_data.clone())?;
+			ensure!(is_unlisted, Error::<T>::UnlistingFailed);
 
 			Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_id, listing_data.asset.0, listing_data.asset.1));
 
@@ -421,14 +392,12 @@ decl_module! {
 			// Get listing data
 			let listing_data = Listings::<T>::take(listing_id);
 
+			// Ensure listing was removed
+			let is_unlisted = Self::do_unlist(&sender, listing_data.clone())?;
+			ensure!(is_unlisted, Error::<T>::UnlistingFailed);
+
 			// Transfer funds to seller
 			<T as Config>::Currency::transfer(&sender, &listing_data.seller, listing_data.price, ExistenceRequirement::KeepAlive)?;
-
-			// Escrow Account
-			let escrow_account: T::AccountId = Self::get_escrow_account();
-
-			// Transfer out of escrow
-			Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
 
 			// Increment Order count
 			OrderCount::mutate(|id| -> Result<u64, DispatchError> {
@@ -455,8 +424,7 @@ decl_module! {
 				RawEvent::WalletAssetBuySuccess(
 					listing_data.seller,
 					sender,
-					listing_data.asset.0,
-					listing_data.asset.1,
+					listing_data.id,
 					listing_data.price
 				)
 			);
@@ -608,6 +576,45 @@ impl<T: Config> Module<T> {
 
 	pub fn is_locked(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
 		return Self::is_listed(&asset) || Self::is_claiming(&asset)
+	}
+
+	fn do_unlist(sender: &T::AccountId, listing_data: ListingOf<T>) -> Result<bool, DispatchError> {
+		//Escrow Account
+		let escrow_account: T::AccountId = Self::get_escrow_account();
+
+		// Transfer out of escrow
+		Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
+
+		// Decrease Listing count
+		ListingCount::mutate(|id| -> Result<u64, DispatchError> {
+			let current_count = *id;
+			*id = id.checked_sub(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
+
+			Ok(current_count)
+		}).ok();
+
+		// Remove the asset from all listings
+		AllListings::<T>::try_mutate(|asset_ids| -> DispatchResult {
+			let asset_index = asset_ids.iter().position(|x| *x == listing_data.asset).unwrap();
+			asset_ids.remove(asset_index);
+
+			Ok(())
+		})?;
+
+		// remove the listing
+		Listings::<T>::remove(listing_data.id);
+
+		// Remove listing from owner
+		// Get owner listing data
+		let mut owner_data = ListingsByOwner::<T>::get(&sender);
+
+		// Remove the old listing id
+		owner_data.retain(|&x| x != listing_data.id);
+
+		// Update owner listings
+		ListingsByOwner::<T>::insert(&sender, owner_data);
+
+		Ok(true)
 	}
 
 	fn do_create_claim(
