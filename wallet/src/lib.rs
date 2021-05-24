@@ -122,7 +122,7 @@ decl_storage! {
 		map hasher(twox_64_concat) ListingId => ListingOf<T>;
 	/// Get all listings ids by an account
 	pub ListingsByOwner get(fn listings_by_owner):
-		map hasher(blake2_128_concat) T::AccountId => ListingId;
+		map hasher(blake2_128_concat) T::AccountId => Vec<ListingId>;
 	/// Get a vector of all listings. Used as a quick lookup.
 	pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
 	/// Get the next listing id
@@ -327,7 +327,18 @@ decl_module! {
 
 			// Add listing to storage
 			Listings::<T>::insert(listing_id, listing);
-			ListingsByOwner::<T>::insert(&sender, listing_id);
+
+			// Add listing to owner
+			// Get owner listing data
+			let mut owner_data = ListingsByOwner::<T>::get(&sender);
+
+			// Append the new listing id
+			owner_data.push(listing_id);
+
+			// Update owner listings
+			ListingsByOwner::<T>::insert(&sender, owner_data);
+
+			// Add asset to all listings
 			AllListings::<T>::append(&asset);
 
 			Self::deposit_event(RawEvent::WalletAssetListed(sender, price, listing_id, asset.0, asset.1));
@@ -366,6 +377,7 @@ decl_module! {
 				Ok(current_count)
 			}).ok();
 
+			// Remove the asset from all listings
 			AllListings::<T>::try_mutate(|asset_ids| -> DispatchResult {
 				let asset_index = asset_ids.iter().position(|x| *x == listing_data.asset).unwrap();
 				asset_ids.remove(asset_index);
@@ -375,6 +387,16 @@ decl_module! {
 
 			// remove the listing
 			Listings::<T>::remove(listing_id);
+
+			// Remove listing from owner
+			// Get owner listing data
+			let mut owner_data = ListingsByOwner::<T>::get(&sender);
+
+			// Remove the old listing id
+			owner_data.retain(|&x| x != listing_id);
+
+			// Update owner listings
+			ListingsByOwner::<T>::insert(&sender, owner_data);
 
 			Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_id, listing_data.asset.0, listing_data.asset.1));
 
@@ -463,13 +485,13 @@ decl_module! {
 			// Get emoji
 			let emoji = emojis::lookup(str_emote).unwrap().as_str().as_bytes().to_vec();
 
-			// Get listing data
+			// Get emotes data
 			let mut emotes_data = Emotes::<T>::get(asset, &sender);
 
 			// Append the new emoji
 			emotes_data.push(emoji.clone());
 
-			// Add listing to storage
+			// Add emote to storage
 			Emotes::<T>::insert(asset, &sender, emotes_data);
 
 			Self::deposit_event(RawEvent::WalletAssetEmotePosted(sender, asset.0, asset.1, emoji));
