@@ -606,7 +606,7 @@ impl<T: Config> Module<T> {
 
 		// Remove listing from owner
 		// Get owner listing data
-		let mut owner_data = ListingsByOwner::<T>::get(&sender);
+		let mut owner_data = ListingsByOwner::<T>::get(listing_data.clone().seller);
 
 		// Remove the old listing id
 		owner_data.retain(|&x| x != listing_data.id);
