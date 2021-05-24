@@ -376,7 +376,6 @@ decl_module! {
 
 		/// Buy the asset from the market
 		///
-		/// - `seller`: account selling the asset
 		/// - `listing_id`: id of the Listing
 		#[weight = 10_000]
 		pub fn buy(origin, listing_id: ListingId) -> DispatchResult{
