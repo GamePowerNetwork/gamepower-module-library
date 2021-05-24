@@ -323,7 +323,7 @@ decl_module! {
 			ensure!(Listings::<T>::contains_key(&sender, listing_id), Error::<T>::AssetNotFound);
 
 			// Get listing data
-			let listing_data = Listings::<T>::take(&sender, listing_id);
+			let listing_data = Listings::<T>::get(&sender, listing_id);
 
 			//Escrow Account
 			let escrow_account: T::AccountId = Self::get_escrow_account();
@@ -345,6 +345,9 @@ decl_module! {
 
 				Ok(())
 			})?;
+
+			// remove the listing
+			Listings::<T>::remove(&sender, listing_id);
 
 			Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_data.asset.0, listing_data.asset.1));
 
@@ -448,8 +451,8 @@ decl_module! {
 			// Ensure the claim is for this sender
 			ensure!(OpenClaims::<T>::contains_key(&sender, claim_id), Error::<T>::ClaimNotFound);
 
-			// Get listing data
-			let claim_data = OpenClaims::<T>::take(&sender, claim_id);
+			// Get claim data
+			let claim_data = OpenClaims::<T>::get(&sender, claim_id);
 
 			// Perform any domain related tasks to claiming
 			ensure!(T::Claim::claim(&sender, claim_data.asset).is_ok(), Error::<T>::ClaimCancelled);
@@ -466,6 +469,9 @@ decl_module! {
 
 				Ok(())
 			})?;
+
+			// Remove the open claim
+			OpenClaims::<T>::remove(&sender, claim_id);
 
 			Self::deposit_event(RawEvent::WalletAssetClaimed(sender, claim_data.asset.0, claim_data.asset.1));
 
