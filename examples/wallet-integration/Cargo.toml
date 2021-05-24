@@ -1,0 +1,52 @@
+[package]
+authors = ['GamePower Devs <https://github.com/GamePowerNetwork>']
+description = 'FRAME pallet wallet integration example.'
+edition = '2018'
+homepage = 'https://gamepower.network'
+license = "Apache-2.0"
+name = 'gamepower-wallet-integration'
+readme = 'README.md'
+repository = 'https://github.com/GamePowerNetwork/gamepower-network/'
+version = '0.0.1'
+
+[package.metadata.docs.rs]
+targets = ['x86_64-unknown-linux-gnu']
+
+[dependencies]
+serde = { default-features = false, version = "1.0.124", optional = true }
+codec = { default-features = false, features = ['derive'], package = 'parity-scale-codec', version = '2.0.0' }
+frame-system = { default-features = false, version = '3.0.0' }
+frame-support = { default-features = false, version = '3.0.0' }
+frame-benchmarking = { default-features = false, optional = true, version = '3.1.0' }
+sp-std = { default-features = false, version = '3.0.0' }
+sp-runtime = { default-features = false, version = '3.0.0' }
+
+# Orml packages
+orml-traits = { default-features = false, version = '0.4.0' }
+orml-nft = { default-features = false, version = '0.4.0' }
+
+# GamePower packages
+gamepower-traits = { package = "gamepower-traits", default-features = false, path = '../../traits' }
+gamepower-primitives = { package = "gamepower-primitives", default-features = false, path = '../../primitives' }
+gamepower-wallet = { package = "gamepower-wallet", default-features = false, path = '../../wallet' }
+
+[dev-dependencies]
+sp-core = { default-features = false, version = '3.0.0' }
+sp-io = { default-features = false, version = '3.0.0' }
+
+[features]
+default = ['std']
+std = [
+	'serde',
+	'codec/std',
+	'frame-support/std',
+	'frame-system/std',
+	'frame-benchmarking/std',
+	'sp-std/std',
+	'sp-runtime/std',
+	'orml-traits/std',
+	'orml-nft/std',
+	'gamepower-traits/std',
+	'gamepower-primitives/std',
+	'gamepower-wallet/std',
+]

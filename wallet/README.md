@@ -123,3 +123,9 @@ cargo +nightly test
 ```
 cargo doc --open --package gamepower-wallet
 ```
+
+## Build
+
+```
+cargo +nightly build --release
+```

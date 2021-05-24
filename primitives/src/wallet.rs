@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use codec::{Decode, Encode};
 use sp_std::vec::Vec;
 #[cfg(feature = "std")]

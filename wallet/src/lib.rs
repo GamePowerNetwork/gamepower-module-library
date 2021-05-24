@@ -34,7 +34,7 @@ use sp_std::vec::Vec;
 use sp_std::str;
 use orml_nft::Pallet as AssetModule;
 use gamepower_traits::*;
-use gamepower_primitives::{ BlockNumber, ListingId, ClaimId };
+use gamepower_primitives::{ ListingId, ClaimId };
 
 #[cfg(test)]
 mod mock;
@@ -218,8 +218,6 @@ decl_module! {
 			// Transfer the asset
 			T::Transfer::transfer(&sender, &to, asset)?;
 
-			Self::deposit_event(RawEvent::WalletAssetTransferred(sender, to, asset.0, asset.1));
-
 			Ok(().into())
 		}
 
@@ -243,8 +241,6 @@ decl_module! {
 
 			// Burn the asset
 			T::Burn::burn(&sender, asset)?;
-
-			Self::deposit_event(RawEvent::WalletAssetBurned(sender, asset.0, asset.1));
 
 			Ok(().into())
 		}
@@ -272,7 +268,7 @@ decl_module! {
 			let escrow_account: T::AccountId = Self::get_escrow_account();
 
 			// Transfer into escrow
-			Self::do_transfer(&sender, &escrow_account, asset);
+			Self::do_transfer(&sender, &escrow_account, asset).ok();
 
 			// Create listing data
 			let listing = Listing {
@@ -295,7 +291,7 @@ decl_module! {
 				*id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
 
 				Ok(current_count)
-			});
+			}).ok();
 
 			// Add listing to storage
 			Listings::<T>::insert(&sender, listing_id, listing);
@@ -327,7 +323,7 @@ decl_module! {
 			let escrow_account: T::AccountId = Self::get_escrow_account();
 
 			// Transfer out of escrow
-			Self::do_transfer(&escrow_account, &sender, listing_data.asset);
+			Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
 
 			// Decrease Listing count
 			ListingCount::mutate(|id| -> Result<u64, DispatchError> {
@@ -335,7 +331,7 @@ decl_module! {
 				*id = id.checked_sub(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
 
 				Ok(current_count)
-			});
+			}).ok();
 
 			AllListings::<T>::try_mutate(|asset_ids| -> DispatchResult {
 				let asset_index = asset_ids.iter().position(|x| *x == listing_data.asset).unwrap();
@@ -374,7 +370,7 @@ decl_module! {
 			let escrow_account: T::AccountId = Self::get_escrow_account();
 
 			// Transfer out of escrow
-			Self::do_transfer(&escrow_account, &sender, listing_data.asset);
+			Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
 
 			// Increment Order count
 			OrderCount::mutate(|id| -> Result<u64, DispatchError> {
@@ -382,7 +378,7 @@ decl_module! {
 				*id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableOrderId)?;
 
 				Ok(current_count)
-			});
+			}).ok();
 
 			Self::deposit_event(
 				RawEvent::WalletAssetBuySuccess(
@@ -453,7 +449,7 @@ decl_module! {
 			let claim_account: T::AccountId = Self::get_claim_account();
 
 			// Transfer asset into the reciever's account
-			Self::do_transfer(&claim_account, &sender, claim_data.asset);
+			Self::do_transfer(&claim_account, &sender, claim_data.asset).ok();
 
 			AllClaims::<T>::try_mutate(|asset_ids| -> DispatchResult {
 				let asset_index = asset_ids.iter().position(|x| *x == claim_data.asset).unwrap();
@@ -513,7 +509,7 @@ impl<T: Config> Module<T> {
     	to: &T::AccountId,
     	asset: (ClassIdOf<T>, TokenIdOf<T>)
 	) -> Result<bool, DispatchError> {
-    	AssetModule::<T>::transfer(&from, &to, asset);
+    	AssetModule::<T>::transfer(&from, &to, asset).ok();
     	return Ok(true)
   	}
 
@@ -522,19 +518,19 @@ impl<T: Config> Module<T> {
 	}
 
 	fn is_claiming(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-		return Self::all_claims().contains(asset);
+		return Self::all_claims().contains(asset)
 	}
 
 	fn get_claim_account() -> T::AccountId {
-		return T::ModuleId::get().into_sub_account(100u32);
+		return T::ModuleId::get().into_sub_account(100u32)
 	}
 
 	fn get_escrow_account() -> T::AccountId {
-		return T::ModuleId::get().into_account();
+		return T::ModuleId::get().into_account()
 	}
 
 	pub fn is_locked(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-		return Self::is_listed(&asset) || Self::is_claiming(&asset);
+		return Self::is_listed(&asset) || Self::is_claiming(&asset)
 	}
 
 	fn do_create_claim(
@@ -546,7 +542,7 @@ impl<T: Config> Module<T> {
 		let claim_account: T::AccountId = Self::get_claim_account();
 
 		// Transfer asset into the claim account
-		Self::do_transfer(&owner, &claim_account, asset);
+		Self::do_transfer(&owner, &claim_account, asset).ok();
 
 		// Create claim data
 		let claim = Claim {
@@ -574,6 +570,7 @@ impl<T: Config> Module<T> {
 impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
 	fn transfer(from: &T::AccountId, to: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
 		Self::do_transfer(&from, &to, asset)?;
+		Module::<T>::deposit_event(RawEvent::WalletAssetTransferred(from.clone(), to.clone(), asset.0, asset.1));
 		Ok(())
 	}
 }
@@ -582,14 +579,7 @@ impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Modu
 impl<T: Config> OnBurnHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
 	fn burn(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
 		AssetModule::<T>::burn(&owner, asset)?;
-		Ok(())
-	}
-}
-
-// Implement OnClaimHandler
-impl<T: Config> OnClaimHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
-	fn claim(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
-		//AssetModule::<T>::burn(&owner, asset)?;
+		Module::<T>::deposit_event(RawEvent::WalletAssetBurned(owner.clone(), asset.0, asset.1));
 		Ok(())
 	}
 }
