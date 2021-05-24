@@ -612,7 +612,7 @@ impl<T: Config> Module<T> {
 		owner_data.retain(|&x| x != listing_data.id);
 
 		// Update owner listings
-		ListingsByOwner::<T>::insert(&sender, owner_data);
+		ListingsByOwner::<T>::insert(listing_data.clone().seller, owner_data);
 
 		Ok(true)
 	}
