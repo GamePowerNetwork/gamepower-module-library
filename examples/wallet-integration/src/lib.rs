@@ -11,35 +11,54 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use frame_support::{
-    decl_module, decl_error,
+    decl_module, decl_error, decl_event
     dispatch::{DispatchResultWithPostInfo},
     ensure,
 };
 
-use frame_system::ensure_signed;
+use frame_system::{self as system, ensure_signed};
 use orml_nft::Pallet as AssetModule;
 use gamepower_wallet::Module as WalletModule;
 use gamepower_primitives::{WalletClassData, WalletAssetData};
+use gamepower_traits::{
+	OnTransferHandler, OnBurnHandler, OnClaimHandler,
+};
 use sp_std::vec::Vec;
 
 pub trait Config:
-frame_system::Config +
+system::Config +
 orml_nft::Config<
     TokenData=WalletAssetData,
     ClassData=WalletClassData,
 >{
-	type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
+	type Event: From<Event<Self>> + Into<<Self as system::Config>::Event>;
 }
 
 pub type ClassIdOf<T> = <T as orml_nft::Config>::ClassId;
 pub type TokenIdOf<T> = <T as orml_nft::Config>::TokenId;
 
+decl_event!(
+	pub enum Event<T>
+	where
+	  <T as frame_system::Config>::AccountId,
+	  ClassId = ClassIdOf<T>,
+	  TokenId = TokenIdOf<T>,
+	{
+	  /// Asset successfully transferred [from, to, classId, tokenId]
+	  AssetTransferred(AccountId, AccountId, ClassId, TokenId),
+	  /// Asset successfully burned [owner, classId, tokenId]
+	  AssetBurned(AccountId, ClassId, TokenId),
+	  /// Claiming assset [owner]
+	  AssetBeingClaimed(AccountId),
+	}
+);
+
 decl_error! {
-  pub enum Error for Module<T: Config> {
-      /// A generic error
-      GenericError,
+	pub enum Error for Module<T: Config> {
+		/// A generic error
+		NoPermission,
+	}
   }
-}
 
 decl_module! {
   pub struct Module<T: Config> for enum Call where origin: T::Origin {
@@ -77,9 +96,9 @@ decl_module! {
 
         let sender = ensure_signed(origin)?;
 
-        ensure!(quantity >= 1, Error::<T>::GenericError);
-        let class_info = AssetModule::<T>::classes(class_id).ok_or(Error::<T>::GenericError)?;
-        ensure!(sender == class_info.owner, Error::<T>::GenericError);
+        ensure!(quantity >= 1, Error::<T>::NoPermission);
+        let class_info = AssetModule::<T>::classes(class_id).ok_or(Error::<T>::NoPermission)?;
+        ensure!(sender == class_info.owner, Error::<T>::NoPermission);
 
         let new_asset_data = WalletAssetData {
             properties: properties.clone(),
@@ -95,4 +114,35 @@ decl_module! {
     }
 
   }
+}
+
+// Implement OnTransferHandler
+impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
+	fn transfer(from: &T::AccountId, to: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
+		AssetModule::<T>::transfer(&from, &to, asset)?;
+		Module::<T>::deposit_event(RawEvent::AssetTransferred(from.clone(), to.clone(), asset.0, asset.1));
+		Ok(())
+	}
+}
+
+// Implement OnBurnHandler
+impl<T: Config> OnBurnHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
+	fn burn(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
+		AssetModule::<T>::burn(&owner, asset)?;
+		Module::<T>::deposit_event(RawEvent::AssetBurned(owner.clone(), asset.0, asset.1));
+		Ok(())
+	}
+}
+
+// Implement OnBurnHandler
+impl<T: Config> OnClaimHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
+	fn claim(owner: &T::AccountId, _asset: (T::ClassId, T::TokenId)) -> DispatchResult {
+
+		// Here is an example of causing a handler to fail. Preventing the wallet from completing the transaction.
+		let allowDispatch = false;
+		ensure!(allowDispatch, Error::<T>::NoPermission);
+
+		Module::<T>::deposit_event(RawEvent::AssetBeingClaimed(owner.clone()));
+		Ok(())
+	}
 }
