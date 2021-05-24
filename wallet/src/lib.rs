@@ -72,7 +72,7 @@ pub trait Config: system::Config + orml_nft::Config {
   /// Wallet Burn Handler
   type Burn: OnBurnHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
   /// Wallet Claim Handler
-  //type Claim: OnClaimHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
+  type Claim: OnClaimHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
   /// Allow assets to be transferred through the wallet
   type AllowTransfer: Get<bool>;
   /// Allow assets to be burned from the wallet
@@ -157,6 +157,10 @@ decl_error! {
   pub enum Error for Module<T: Config> {
     /// Assets cannot be tranferred
     TransfersNotAllowed,
+	/// An error occurred during transfer
+	TransferCancelled,
+	/// An error occurred during burn
+	BurnCancelled,
     /// Assets cannot be burned
     BurningNotAllowed,
     /// Assets cannot be listed on the market
@@ -165,6 +169,8 @@ decl_error! {
     AssetLocked,
     /// Assets cannot be claimed
     ClaimingNotAllowed,
+	/// An error occurred during claim
+	ClaimCancelled,
     /// Asset not found
     AssetNotFound,
     /// Claim not found
@@ -216,9 +222,9 @@ decl_module! {
 			ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
 
 			// Transfer the asset
-			T::Transfer::transfer(&sender, &to, asset)?;
+			ensure!(T::Transfer::transfer(&sender, &to, asset).is_ok(), Error::<T>::TransferCancelled);
 
-			Ok(().into())
+			Ok(())
 		}
 
 		/// Burn asset
@@ -240,7 +246,7 @@ decl_module! {
 			ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
 
 			// Burn the asset
-			T::Burn::burn(&sender, asset)?;
+			ensure!(T::Burn::burn(&sender, asset).is_ok(), Error::<T>::BurnCancelled);
 
 			Ok(().into())
 		}
@@ -445,6 +451,9 @@ decl_module! {
 			// Get listing data
 			let claim_data = OpenClaims::<T>::take(&sender, claim_id);
 
+			// Perform any domain related tasks to claiming
+			ensure!(T::Claim::claim(&sender, claim_data.asset).is_ok(), Error::<T>::ClaimCancelled);
+
 			// Claim Account
 			let claim_account: T::AccountId = Self::get_claim_account();
 
@@ -580,6 +589,13 @@ impl<T: Config> OnBurnHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T
 	fn burn(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
 		AssetModule::<T>::burn(&owner, asset)?;
 		Module::<T>::deposit_event(RawEvent::WalletAssetBurned(owner.clone(), asset.0, asset.1));
+		Ok(())
+	}
+}
+
+// Implement OnClaimHandler
+impl<T: Config> OnClaimHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
+	fn claim(_owner: &T::AccountId, _asset: (T::ClassId, T::TokenId)) -> DispatchResult {
 		Ok(())
 	}
 }
