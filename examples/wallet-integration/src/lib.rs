@@ -15,6 +15,10 @@ use frame_support::{
     dispatch::{DispatchResultWithPostInfo},
     ensure,
 };
+use sp_runtime::{
+	DispatchResult, DispatchError,
+};
+
 
 use frame_system::{self as system, ensure_signed};
 use orml_nft::Pallet as AssetModule;
@@ -136,7 +140,7 @@ impl<T: Config> OnBurnHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T
 	}
 }
 
-// Implement OnBurnHandler
+// Implement OnClaimHandler
 impl<T: Config> OnClaimHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
 	fn claim(owner: &T::AccountId, _asset: (T::ClassId, T::TokenId)) -> DispatchResult {
 
