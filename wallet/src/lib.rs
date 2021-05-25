@@ -121,10 +121,10 @@ decl_storage! {
 
     /// Get a listing by the listing_id
     pub Listings get(fn listings):
-        map hasher(twox_64_concat) ListingId => ListingOf<T>;
+        map hasher(twox_64_concat) ListingId => Option<ListingOf<T>>;
     /// Get all listings ids by an account
     pub ListingsByOwner get(fn listings_by_owner):
-        map hasher(blake2_128_concat) T::AccountId => Vec<ListingId>;
+        map hasher(blake2_128_concat) T::AccountId => Option<Vec<ListingId>>;
     /// Get a vector of all listings. Used as a quick lookup.
     pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
     /// Get the next listing id
@@ -135,10 +135,10 @@ decl_storage! {
     pub OrderCount: u64;
     /// A history of orders for an asset
     pub OrderHistory get(fn order_history):
-        map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>) => OrderOf<T>;
+        map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>) => Option<OrderOf<T>>;
     /// Get one or more claims by AccountId or a single claim including the claim_id
     pub OpenClaims get(fn open_claims):
-        double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ClaimId => ClaimOf<T>;
+        double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ClaimId => Option<ClaimOf<T>>;
     /// Get a vector of all claims. Used as a quick lookup.
     pub AllClaims get(fn all_claims): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
     /// Get the next claim id
@@ -333,13 +333,20 @@ decl_module! {
 
             // Add listing to owner
             // Get owner listing data
-            let mut owner_data = ListingsByOwner::<T>::get(&sender);
+            if ListingsByOwner::<T>::contains_key(&sender) {
+                ListingsByOwner::<T>::try_mutate(&sender, |owner_data| -> DispatchResult {
+                    let data = owner_data.as_mut().ok_or(Error::<T>::ListingNotFound)?;
+                    // Append the new listing id
+                    data.push(listing_id);
 
-            // Append the new listing id
-            owner_data.push(listing_id);
-
-            // Update owner listings
-            ListingsByOwner::<T>::insert(&sender, owner_data);
+                    // Update owner listings
+                    ListingsByOwner::<T>::insert(&sender, data);
+                    Ok(())
+                })?;
+            } else {
+                let listings = vec![listing_id];
+                ListingsByOwner::<T>::insert(&sender, listings)
+            }
 
             // Add asset to all listings
             AllListings::<T>::append(&asset);
@@ -361,16 +368,20 @@ decl_module! {
             ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
 
             // Get listing data
-            let listing_data = Listings::<T>::get(listing_id);
+            Listings::<T>::try_mutate(listing_id, |listing_data| -> DispatchResult {
+                let data = listing_data.as_mut().ok_or(Error::<T>::ListingNotFound)?;
 
-            // Ensure the listing is in storage for this user
-            ensure!(sender == listing_data.seller, Error::<T>::NoPermission);
+                // Ensure the listing is in storage for this user
+                ensure!(sender == data.seller, Error::<T>::NoPermission);
 
-            // Ensure listing was removed
-            let is_unlisted = Self::do_unlist(&sender, listing_data.clone())?;
-            ensure!(is_unlisted, Error::<T>::UnlistingFailed);
+                // Ensure listing was removed
+                let is_unlisted = Self::do_unlist(&sender, data.clone())?;
+                ensure!(is_unlisted, Error::<T>::UnlistingFailed);
 
-            Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_id, listing_data.asset.0, listing_data.asset.1));
+                Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_id, data.asset.0, data.asset.1));
+
+                Ok(())
+            })?;
 
             Ok(())
         }
@@ -390,44 +401,48 @@ decl_module! {
             ensure!(Listings::<T>::contains_key(listing_id), Error::<T>::ListingNotFound);
 
             // Get listing data
-            let listing_data = Listings::<T>::take(listing_id);
+            Listings::<T>::try_mutate(listing_id, |listing_data| -> DispatchResult {
+                let data = listing_data.as_mut().ok_or(Error::<T>::ListingNotFound)?;
 
-            // Ensure listing was removed
-            let is_unlisted = Self::do_unlist(&sender, listing_data.clone())?;
-            ensure!(is_unlisted, Error::<T>::UnlistingFailed);
+                // Ensure listing was removed
+                let is_unlisted = Self::do_unlist(&sender, data.clone())?;
+                ensure!(is_unlisted, Error::<T>::UnlistingFailed);
 
-            // Transfer funds to seller
-            <T as Config>::Currency::transfer(&sender, &listing_data.seller, listing_data.price, ExistenceRequirement::KeepAlive)?;
+                // Transfer funds to seller
+                <T as Config>::Currency::transfer(&sender, &data.seller, data.price, ExistenceRequirement::KeepAlive)?;
 
-            // Increment Order count
-            OrderCount::mutate(|id| -> Result<u64, DispatchError> {
-                let current_count = *id;
-                *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableOrderId)?;
+                // Increment Order count
+                OrderCount::mutate(|id| -> Result<u64, DispatchError> {
+                    let current_count = *id;
+                    *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableOrderId)?;
 
-                Ok(current_count)
-            }).ok();
+                    Ok(current_count)
+                }).ok();
 
-            // Get the current block for this order
-            let block_number = <system::Module<T>>::block_number();
+                // Get the current block for this order
+                let block_number = <system::Module<T>>::block_number();
 
-            // Create order data
-            let order = Order {
-                listing: listing_data.clone(),
-                buyer: sender.clone(),
-                block: block_number,
-            };
+                // Create order data
+                let order = Order {
+                    listing: data.clone(),
+                    buyer: sender.clone(),
+                    block: block_number,
+                };
 
-            // Save order history
-            OrderHistory::<T>::insert(order.listing.asset, order);
+                // Save order history
+                OrderHistory::<T>::insert(order.listing.asset, order);
 
-            Self::deposit_event(
-                RawEvent::WalletAssetBuySuccess(
-                    listing_data.seller,
-                    sender,
-                    listing_data.id,
-                    listing_data.price
-                )
-            );
+                Self::deposit_event(
+                    RawEvent::WalletAssetBuySuccess(
+                        data.seller.clone(),
+                        sender,
+                        data.id,
+                        data.price
+                    )
+                );
+
+                Ok(())
+            })?;
 
             Ok(())
         }
@@ -482,28 +497,32 @@ decl_module! {
             ensure!(OpenClaims::<T>::contains_key(&sender, claim_id), Error::<T>::ClaimNotFound);
 
             // Get claim data
-            let claim_data = OpenClaims::<T>::get(&sender, claim_id);
+            OpenClaims::<T>::try_mutate(sender.clone(), claim_id, |claim_data| -> DispatchResult {
+                let data = claim_data.as_mut().ok_or(Error::<T>::ClaimNotFound)?;
 
-            // Perform any domain related tasks to claiming
-            ensure!(T::Claim::claim(&sender, claim_data.asset).is_ok(), Error::<T>::ClaimCancelled);
+                // Perform any domain related tasks to claiming
+                ensure!(T::Claim::claim(&sender, data.asset).is_ok(), Error::<T>::ClaimCancelled);
 
-            // Claim Account
-            let claim_account: T::AccountId = Self::get_claim_account();
+                // Claim Account
+                let claim_account: T::AccountId = Self::get_claim_account();
 
-            // Transfer asset into the reciever's account
-            Self::do_transfer(&claim_account, &sender, claim_data.asset).ok();
+                // Transfer asset into the reciever's account
+                Self::do_transfer(&claim_account, &sender, data.asset).ok();
 
-            AllClaims::<T>::try_mutate(|asset_ids| -> DispatchResult {
-                let asset_index = asset_ids.iter().position(|x| *x == claim_data.asset).unwrap();
-                asset_ids.remove(asset_index);
+                AllClaims::<T>::try_mutate(|asset_ids| -> DispatchResult {
+                    let asset_index = asset_ids.iter().position(|x| *x == data.asset).unwrap();
+                    asset_ids.remove(asset_index);
+
+                    Ok(())
+                })?;
+
+                // Remove the open claim
+                OpenClaims::<T>::remove(&sender, claim_id);
+
+                Self::deposit_event(RawEvent::WalletAssetClaimed(sender, data.asset.0, data.asset.1));
 
                 Ok(())
             })?;
-
-            // Remove the open claim
-            OpenClaims::<T>::remove(&sender, claim_id);
-
-            Self::deposit_event(RawEvent::WalletAssetClaimed(sender, claim_data.asset.0, claim_data.asset.1));
 
             Ok(())
         }
@@ -612,13 +631,20 @@ impl<T: Config> Module<T> {
 
         // Remove listing from owner
         // Get owner listing data
-        let mut owner_data = ListingsByOwner::<T>::get(listing_data.clone().seller);
+        ListingsByOwner::<T>::try_mutate(
+            listing_data.clone().seller,
+            |owner_data| -> DispatchResult {
+                let data = owner_data.as_mut().ok_or(Error::<T>::ListingNotFound)?;
 
-        // Remove the old listing id
-        owner_data.retain(|&x| x != listing_data.id);
+                // Remove the old listing id
+                data.retain(|&x| x != listing_data.id);
 
-        // Update owner listings
-        ListingsByOwner::<T>::insert(listing_data.seller, owner_data);
+                // Update owner listings
+                ListingsByOwner::<T>::insert(listing_data.seller, data);
+
+                Ok(())
+            },
+        )?;
 
         Ok(true)
     }
