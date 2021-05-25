@@ -34,6 +34,7 @@ use orml_nft::Pallet as AssetModule;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_std::str;
+use sp_std::vec;
 use sp_std::vec::Vec;
 
 #[cfg(test)]
