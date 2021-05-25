@@ -276,7 +276,7 @@ decl_module! {
             // Burn the asset
             ensure!(T::Burn::burn(&sender, asset).is_ok(), Error::<T>::BurnCancelled);
 
-            Ok(().into())
+            Ok(())
         }
 
         /// Send the asset to escrow to be listed on the market
@@ -546,7 +546,7 @@ impl<T: Config> Module<T> {
         owner: &T::AccountId,
         asset: &(ClassIdOf<T>, TokenIdOf<T>),
     ) -> Result<bool, DispatchError> {
-        return Ok(AssetModule::<T>::is_owner(&owner, *asset));
+        Ok(AssetModule::<T>::is_owner(&owner, *asset))
     }
 
     fn do_transfer(
@@ -555,27 +555,27 @@ impl<T: Config> Module<T> {
         asset: (ClassIdOf<T>, TokenIdOf<T>),
     ) -> Result<bool, DispatchError> {
         AssetModule::<T>::transfer(&from, &to, asset).ok();
-        return Ok(true);
+        Ok(true)
     }
 
     fn is_listed(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-        return Self::all_listings().contains(asset);
+        Self::all_listings().contains(asset)
     }
 
     fn is_claiming(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-        return Self::all_claims().contains(asset);
+        Self::all_claims().contains(asset)
     }
 
     fn get_claim_account() -> T::AccountId {
-        return T::ModuleId::get().into_sub_account(100u32);
+        T::ModuleId::get().into_sub_account(100u32)
     }
 
     fn get_escrow_account() -> T::AccountId {
-        return T::ModuleId::get().into_account();
+        T::ModuleId::get().into_account()
     }
 
     pub fn is_locked(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-        return Self::is_listed(&asset) || Self::is_claiming(&asset);
+        Self::is_listed(&asset) || Self::is_claiming(&asset)
     }
 
     fn do_unlist(sender: &T::AccountId, listing_data: ListingOf<T>) -> Result<bool, DispatchError> {
@@ -618,7 +618,7 @@ impl<T: Config> Module<T> {
         owner_data.retain(|&x| x != listing_data.id);
 
         // Update owner listings
-        ListingsByOwner::<T>::insert(listing_data.clone().seller, owner_data);
+        ListingsByOwner::<T>::insert(listing_data.seller, owner_data);
 
         Ok(true)
     }
