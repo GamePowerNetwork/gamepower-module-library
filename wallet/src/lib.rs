@@ -19,22 +19,22 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 use codec::{Decode, Encode};
 use frame_support::{
-  decl_module, decl_storage, decl_error, decl_event, ensure,
-  traits::{Currency, ExistenceRequirement, Get, ReservableCurrency},
+    decl_error, decl_event, decl_module, decl_storage, ensure,
+    traits::{Currency, ExistenceRequirement, Get, ReservableCurrency},
 };
 use frame_system::{self as system, ensure_signed};
 use sp_runtime::{
-  DispatchResult, DispatchError, ModuleId, RuntimeDebug,
-  traits::{AccountIdConversion, One},
+    traits::{AccountIdConversion, One},
+    DispatchError, DispatchResult, ModuleId, RuntimeDebug,
 };
 
+use gamepower_primitives::{ClaimId, ListingId};
+use gamepower_traits::*;
+use orml_nft::Pallet as AssetModule;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_std::vec::Vec;
 use sp_std::str;
-use orml_nft::Pallet as AssetModule;
-use gamepower_traits::*;
-use gamepower_primitives::{ ListingId, ClaimId };
+use sp_std::vec::Vec;
 
 #[cfg(test)]
 mod mock;
@@ -46,60 +46,59 @@ mod tests;
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 /// Listing data
 pub struct Listing<ClassIdOf, TokenIdOf, AccountId, Balance> {
-	/// Listing Id
-	pub id: ListingId,
-	/// Seller of the listing
-	pub seller: AccountId,
-	/// Asset - (class_id, token_id)
-	pub asset: (ClassIdOf, TokenIdOf),
-	/// Price of the asset listed
-	pub price: Balance,
+    /// Listing Id
+    pub id: ListingId,
+    /// Seller of the listing
+    pub seller: AccountId,
+    /// Asset - (class_id, token_id)
+    pub asset: (ClassIdOf, TokenIdOf),
+    /// Price of the asset listed
+    pub price: Balance,
 }
 
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 /// Claim data
 pub struct Claim<ClassIdOf, TokenIdOf, AccountId> {
-	/// account this claim is meant for
-	pub receiver: AccountId,
-	/// Asset - (class_id, token_id)
-	pub asset: (ClassIdOf, TokenIdOf)
+    /// account this claim is meant for
+    pub receiver: AccountId,
+    /// Asset - (class_id, token_id)
+    pub asset: (ClassIdOf, TokenIdOf),
 }
 
 #[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 /// Order data
 pub struct Order<ListingOf, AccountId, BlockNumber> {
-	/// order listing
-	pub listing: ListingOf,
-	/// order buyer
-	pub buyer: AccountId,
-	/// genesis block
-	pub block: BlockNumber,
+    /// order listing
+    pub listing: ListingOf,
+    /// order buyer
+    pub buyer: AccountId,
+    /// genesis block
+    pub block: BlockNumber,
 }
-
 
 /// The module configuration trait.
 pub trait Config: system::Config + orml_nft::Config {
-  type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
-  /// Wallet Transfer Handler
-  type Transfer: OnTransferHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
-  /// Wallet Burn Handler
-  type Burn: OnBurnHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
-  /// Wallet Claim Handler
-  type Claim: OnClaimHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
-  /// Allow assets to be transferred through the wallet
-  type AllowTransfer: Get<bool>;
-  /// Allow assets to be burned from the wallet
-  type AllowBurn: Get<bool>;
-  /// Allow assets to be listed on the market
-  type AllowEscrow: Get<bool>;
-  /// Allow asset claiming
-  type AllowClaim: Get<bool>;
-  /// Currency type for reserve/unreserve balance
-  type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
-  /// Wallet Module Id
-  type ModuleId: Get<ModuleId>;
+    type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
+    /// Wallet Transfer Handler
+    type Transfer: OnTransferHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
+    /// Wallet Burn Handler
+    type Burn: OnBurnHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
+    /// Wallet Claim Handler
+    type Claim: OnClaimHandler<Self::AccountId, Self::ClassId, Self::TokenId>;
+    /// Allow assets to be transferred through the wallet
+    type AllowTransfer: Get<bool>;
+    /// Allow assets to be burned from the wallet
+    type AllowBurn: Get<bool>;
+    /// Allow assets to be listed on the market
+    type AllowEscrow: Get<bool>;
+    /// Allow asset claiming
+    type AllowClaim: Get<bool>;
+    /// Currency type for reserve/unreserve balance
+    type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
+    /// Wallet Module Id
+    type ModuleId: Get<ModuleId>;
 }
 
 /// Class Id
@@ -107,43 +106,46 @@ pub type ClassIdOf<T> = <T as orml_nft::Config>::ClassId;
 /// Token Id
 pub type TokenIdOf<T> = <T as orml_nft::Config>::TokenId;
 /// Listing Data
-pub type ListingOf<T> = Listing<ClassIdOf<T>, TokenIdOf<T>, <T as system::Config>::AccountId, BalanceOf<T>>;
+pub type ListingOf<T> =
+    Listing<ClassIdOf<T>, TokenIdOf<T>, <T as system::Config>::AccountId, BalanceOf<T>>;
 /// Claim Data
 pub type ClaimOf<T> = Claim<ClassIdOf<T>, TokenIdOf<T>, <T as system::Config>::AccountId>;
 /// Order Data
-pub type OrderOf<T> = Order<ListingOf<T>, <T as system::Config>::AccountId, <T as system::Config>::BlockNumber>;
-type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as system::Config>::AccountId>>::Balance;
+pub type OrderOf<T> =
+    Order<ListingOf<T>, <T as system::Config>::AccountId, <T as system::Config>::BlockNumber>;
+type BalanceOf<T> =
+    <<T as Config>::Currency as Currency<<T as system::Config>::AccountId>>::Balance;
 
 decl_storage! {
   trait Store for Module<T: Config> as GamePowerWallet {
 
-	/// Get a listing by the listing_id
-	pub Listings get(fn listings):
-		map hasher(twox_64_concat) ListingId => ListingOf<T>;
-	/// Get all listings ids by an account
-	pub ListingsByOwner get(fn listings_by_owner):
-		map hasher(blake2_128_concat) T::AccountId => Vec<ListingId>;
-	/// Get a vector of all listings. Used as a quick lookup.
-	pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
-	/// Get the next listing id
-	pub NextListingId get(fn next_listing_id): ListingId;
-	/// A fast and simple count of all current listings
-	pub ListingCount: u64;
-	/// A count of all orders made through the wallet
-	pub OrderCount: u64;
-	/// A history of orders for an asset
-	pub OrderHistory get(fn order_history):
-		map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>) => OrderOf<T>;
-	/// Get one or more claims by AccountId or a single claim including the claim_id
-	pub OpenClaims get(fn open_claims):
-		double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ClaimId => ClaimOf<T>;
-	/// Get a vector of all claims. Used as a quick lookup.
-	pub AllClaims get(fn all_claims): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
-	/// Get the next claim id
-	pub NextClaimId get(fn next_claim_id): ClaimId;
-	/// Emotes used by the wallet
-	pub Emotes get(fn emotes):
-		double_map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>), hasher(twox_64_concat) T::AccountId => Vec<Vec<u8>>;
+    /// Get a listing by the listing_id
+    pub Listings get(fn listings):
+        map hasher(twox_64_concat) ListingId => ListingOf<T>;
+    /// Get all listings ids by an account
+    pub ListingsByOwner get(fn listings_by_owner):
+        map hasher(blake2_128_concat) T::AccountId => Vec<ListingId>;
+    /// Get a vector of all listings. Used as a quick lookup.
+    pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
+    /// Get the next listing id
+    pub NextListingId get(fn next_listing_id): ListingId;
+    /// A fast and simple count of all current listings
+    pub ListingCount: u64;
+    /// A count of all orders made through the wallet
+    pub OrderCount: u64;
+    /// A history of orders for an asset
+    pub OrderHistory get(fn order_history):
+        map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>) => OrderOf<T>;
+    /// Get one or more claims by AccountId or a single claim including the claim_id
+    pub OpenClaims get(fn open_claims):
+        double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ClaimId => ClaimOf<T>;
+    /// Get a vector of all claims. Used as a quick lookup.
+    pub AllClaims get(fn all_claims): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
+    /// Get the next claim id
+    pub NextClaimId get(fn next_claim_id): ClaimId;
+    /// Emotes used by the wallet
+    pub Emotes get(fn emotes):
+        double_map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>), hasher(twox_64_concat) T::AccountId => Vec<Vec<u8>>;
   }
 }
 
@@ -171,8 +173,8 @@ decl_event!(
     WalletClaimCreated(AccountId, AccountId, ClassId, TokenId),
     /// Asset buy successful [seller, buyer, listingId, price]
     WalletAssetBuySuccess(AccountId, AccountId, ListingId, Balance),
-	/// New Emote posted [poster, classId, tokenId, emote]
-	WalletAssetEmotePosted(AccountId, ClassId, TokenId, Vec<u8>),
+    /// New Emote posted [poster, classId, tokenId, emote]
+    WalletAssetEmotePosted(AccountId, ClassId, TokenId, Vec<u8>),
   }
 );
 
@@ -180,10 +182,10 @@ decl_error! {
   pub enum Error for Module<T: Config> {
     /// Assets cannot be tranferred
     TransfersNotAllowed,
-	/// An error occurred during transfer
-	TransferCancelled,
-	/// An error occurred during burn
-	BurnCancelled,
+    /// An error occurred during transfer
+    TransferCancelled,
+    /// An error occurred during burn
+    BurnCancelled,
     /// Assets cannot be burned
     BurningNotAllowed,
     /// Assets cannot be listed on the market
@@ -192,13 +194,13 @@ decl_error! {
     AssetLocked,
     /// Assets cannot be claimed
     ClaimingNotAllowed,
-	/// An error occurred during claim
-	ClaimCancelled,
+    /// An error occurred during claim
+    ClaimCancelled,
     /// Asset not found
     AssetNotFound,
-	/// Listing not found
+    /// Listing not found
     ListingNotFound,
-	/// Listing not found
+    /// Listing not found
     UnlistingFailed,
     /// Claim not found
     ClaimNotFound,
@@ -210,466 +212,482 @@ decl_error! {
     NoAvailableClaimId,
     /// Maximum orders in Escrow
     NoAvailableOrderId,
-	/// Invalid Emote
-	InvalidEmote,
+    /// Invalid Emote
+    InvalidEmote,
     /// No Permission for this action
     NoPermission,
   }
 }
 
-
 decl_module! {
     pub struct Module<T: Config> for enum Call where origin: T::Origin {
-    	type Error = Error<T>;
+        type Error = Error<T>;
 
-		fn deposit_event() = default;
+        fn deposit_event() = default;
 
-		const AllowTransfer: bool = T::AllowTransfer::get();
-		const AllowBurn: bool = T::AllowBurn::get();
-		const AllowEscrow: bool = T::AllowEscrow::get();
-		const AllowClaim: bool = T::AllowClaim::get();
+        const AllowTransfer: bool = T::AllowTransfer::get();
+        const AllowBurn: bool = T::AllowBurn::get();
+        const AllowEscrow: bool = T::AllowEscrow::get();
+        const AllowClaim: bool = T::AllowClaim::get();
 
-	  	/// Transfer asset
-		///
-		/// - `to`: the token recipient
-		/// - `asset`: (class_id, token_id)
-		#[weight = 10_000]
-		pub fn transfer(origin, to: T::AccountId, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
+          /// Transfer asset
+        ///
+        /// - `to`: the token recipient
+        /// - `asset`: (class_id, token_id)
+        #[weight = 10_000]
+        pub fn transfer(origin, to: T::AccountId, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
 
-			let sender = ensure_signed(origin)?;
+            let sender = ensure_signed(origin)?;
 
-			// Check that the wallet has permission to transfer assets
-			ensure!(T::AllowTransfer::get(), Error::<T>::TransfersNotAllowed);
+            // Check that the wallet has permission to transfer assets
+            ensure!(T::AllowTransfer::get(), Error::<T>::TransfersNotAllowed);
 
-			// Check that the sender owns this asset
-			let check_ownership = Self::check_ownership(&sender, &asset)?;
-			ensure!(check_ownership, Error::<T>::NoPermission);
+            // Check that the sender owns this asset
+            let check_ownership = Self::check_ownership(&sender, &asset)?;
+            ensure!(check_ownership, Error::<T>::NoPermission);
 
-			// Ensure that the asset is not locked in Escrow or Claims
-			ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
+            // Ensure that the asset is not locked in Escrow or Claims
+            ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
 
-			// Transfer the asset
-			ensure!(T::Transfer::transfer(&sender, &to, asset).is_ok(), Error::<T>::TransferCancelled);
+            // Transfer the asset
+            ensure!(T::Transfer::transfer(&sender, &to, asset).is_ok(), Error::<T>::TransferCancelled);
 
-			Ok(())
-		}
+            Ok(())
+        }
 
-		/// Burn asset
-		///
-		/// - `asset`: (class_id, token_id)
-		#[weight = 10_000]
-		pub fn burn(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
+        /// Burn asset
+        ///
+        /// - `asset`: (class_id, token_id)
+        #[weight = 10_000]
+        pub fn burn(origin, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
 
-			let sender = ensure_signed(origin)?;
+            let sender = ensure_signed(origin)?;
 
-			// Check that the wallet has permission to burn assets
-			ensure!(T::AllowBurn::get(), Error::<T>::BurningNotAllowed);
+            // Check that the wallet has permission to burn assets
+            ensure!(T::AllowBurn::get(), Error::<T>::BurningNotAllowed);
 
-			// Check that the sender owns this asset
-			let check_ownership = Self::check_ownership(&sender, &asset)?;
-			ensure!(check_ownership, Error::<T>::NoPermission);
+            // Check that the sender owns this asset
+            let check_ownership = Self::check_ownership(&sender, &asset)?;
+            ensure!(check_ownership, Error::<T>::NoPermission);
 
-			// Ensure that the asset is not locked in Escrow or Claims
-			ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
+            // Ensure that the asset is not locked in Escrow or Claims
+            ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
 
-			// Burn the asset
-			ensure!(T::Burn::burn(&sender, asset).is_ok(), Error::<T>::BurnCancelled);
+            // Burn the asset
+            ensure!(T::Burn::burn(&sender, asset).is_ok(), Error::<T>::BurnCancelled);
 
-			Ok(().into())
-		}
+            Ok(().into())
+        }
 
-		/// Send the asset to escrow to be listed on the market
-		///
-		/// - `asset`: (class_id, token_id)
-		/// - `price`: price to sell the asset on the market
-		#[weight = 10_000]
-		pub fn list(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), price: BalanceOf<T>) -> DispatchResult{
+        /// Send the asset to escrow to be listed on the market
+        ///
+        /// - `asset`: (class_id, token_id)
+        /// - `price`: price to sell the asset on the market
+        #[weight = 10_000]
+        pub fn list(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), price: BalanceOf<T>) -> DispatchResult{
 
-			let sender = ensure_signed(origin)?;
+            let sender = ensure_signed(origin)?;
 
-			// Check that the wallet has permission to list assets
-			ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
+            // Check that the wallet has permission to list assets
+            ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
 
-			// Check that the sender owns this asset
-			let check_ownership = Self::check_ownership(&sender, &asset)?;
-			ensure!(check_ownership, Error::<T>::NoPermission);
+            // Check that the sender owns this asset
+            let check_ownership = Self::check_ownership(&sender, &asset)?;
+            ensure!(check_ownership, Error::<T>::NoPermission);
 
-			// Ensure this asset isn't already listed
-			ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
+            // Ensure this asset isn't already listed
+            ensure!(!Self::is_locked(&asset), Error::<T>::AssetLocked);
 
-			// Escrow Account
-			let escrow_account: T::AccountId = Self::get_escrow_account();
+            // Escrow Account
+            let escrow_account: T::AccountId = Self::get_escrow_account();
 
-			// Transfer into escrow
-			Self::do_transfer(&sender, &escrow_account, asset).ok();
+            // Transfer into escrow
+            Self::do_transfer(&sender, &escrow_account, asset).ok();
 
-			// Add the new listing id to storage
-			let listing_id = NextListingId::try_mutate(|id| -> Result<ListingId, DispatchError> {
-				let current_id = *id;
-				*id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
+            // Add the new listing id to storage
+            let listing_id = NextListingId::try_mutate(|id| -> Result<ListingId, DispatchError> {
+                let current_id = *id;
+                *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
 
-				Ok(current_id)
-			})?;
+                Ok(current_id)
+            })?;
 
-			// Create listing data
-			let listing = Listing {
-				id: listing_id,
-				seller: sender.clone(),
-				asset,
-				price,
-			};
+            // Create listing data
+            let listing = Listing {
+                id: listing_id,
+                seller: sender.clone(),
+                asset,
+                price,
+            };
 
-			// Increment Listing count
-			ListingCount::mutate(|id| -> Result<u64, DispatchError> {
-				let current_count = *id;
-				*id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
+            // Increment Listing count
+            ListingCount::mutate(|id| -> Result<u64, DispatchError> {
+                let current_count = *id;
+                *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
 
-				Ok(current_count)
-			}).ok();
+                Ok(current_count)
+            }).ok();
 
-			// Add listing to storage
-			Listings::<T>::insert(listing_id, listing);
+            // Add listing to storage
+            Listings::<T>::insert(listing_id, listing);
 
-			// Add listing to owner
-			// Get owner listing data
-			let mut owner_data = ListingsByOwner::<T>::get(&sender);
+            // Add listing to owner
+            // Get owner listing data
+            let mut owner_data = ListingsByOwner::<T>::get(&sender);
 
-			// Append the new listing id
-			owner_data.push(listing_id);
+            // Append the new listing id
+            owner_data.push(listing_id);
 
-			// Update owner listings
-			ListingsByOwner::<T>::insert(&sender, owner_data);
+            // Update owner listings
+            ListingsByOwner::<T>::insert(&sender, owner_data);
 
-			// Add asset to all listings
-			AllListings::<T>::append(&asset);
+            // Add asset to all listings
+            AllListings::<T>::append(&asset);
 
-			Self::deposit_event(RawEvent::WalletAssetListed(sender, price, listing_id, asset.0, asset.1));
+            Self::deposit_event(RawEvent::WalletAssetListed(sender, price, listing_id, asset.0, asset.1));
 
-			Ok(())
-		}
+            Ok(())
+        }
 
-		/// Remove the asset from escrow
-		///
-		/// - `listing_id`: id of the Listing
-		#[weight = 10_000]
-		pub fn unlist(origin, listing_id: ListingId) -> DispatchResult{
+        /// Remove the asset from escrow
+        ///
+        /// - `listing_id`: id of the Listing
+        #[weight = 10_000]
+        pub fn unlist(origin, listing_id: ListingId) -> DispatchResult{
 
-			let sender = ensure_signed(origin)?;
+            let sender = ensure_signed(origin)?;
 
-			// Check that the wallet has permission to list assets
-			ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
+            // Check that the wallet has permission to list assets
+            ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
 
-			// Get listing data
-			let listing_data = Listings::<T>::get(listing_id);
+            // Get listing data
+            let listing_data = Listings::<T>::get(listing_id);
 
-			// Ensure the listing is in storage for this user
-			ensure!(sender == listing_data.seller, Error::<T>::NoPermission);
+            // Ensure the listing is in storage for this user
+            ensure!(sender == listing_data.seller, Error::<T>::NoPermission);
 
-			// Ensure listing was removed
-			let is_unlisted = Self::do_unlist(&sender, listing_data.clone())?;
-			ensure!(is_unlisted, Error::<T>::UnlistingFailed);
+            // Ensure listing was removed
+            let is_unlisted = Self::do_unlist(&sender, listing_data.clone())?;
+            ensure!(is_unlisted, Error::<T>::UnlistingFailed);
 
-			Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_id, listing_data.asset.0, listing_data.asset.1));
+            Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_id, listing_data.asset.0, listing_data.asset.1));
 
-			Ok(())
-		}
+            Ok(())
+        }
 
-		/// Buy the asset from the market
-		///
-		/// - `listing_id`: id of the Listing
-		#[weight = 10_000]
-		pub fn buy(origin, listing_id: ListingId) -> DispatchResult{
+        /// Buy the asset from the market
+        ///
+        /// - `listing_id`: id of the Listing
+        #[weight = 10_000]
+        pub fn buy(origin, listing_id: ListingId) -> DispatchResult{
 
-			let sender = ensure_signed(origin)?;
+            let sender = ensure_signed(origin)?;
 
-			// Check that the wallet has permission to list assets
-			ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
+            // Check that the wallet has permission to list assets
+            ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
 
-			// Ensure the listing is in storage
-			ensure!(Listings::<T>::contains_key(listing_id), Error::<T>::ListingNotFound);
+            // Ensure the listing is in storage
+            ensure!(Listings::<T>::contains_key(listing_id), Error::<T>::ListingNotFound);
 
-			// Get listing data
-			let listing_data = Listings::<T>::take(listing_id);
+            // Get listing data
+            let listing_data = Listings::<T>::take(listing_id);
 
-			// Ensure listing was removed
-			let is_unlisted = Self::do_unlist(&sender, listing_data.clone())?;
-			ensure!(is_unlisted, Error::<T>::UnlistingFailed);
+            // Ensure listing was removed
+            let is_unlisted = Self::do_unlist(&sender, listing_data.clone())?;
+            ensure!(is_unlisted, Error::<T>::UnlistingFailed);
 
-			// Transfer funds to seller
-			<T as Config>::Currency::transfer(&sender, &listing_data.seller, listing_data.price, ExistenceRequirement::KeepAlive)?;
+            // Transfer funds to seller
+            <T as Config>::Currency::transfer(&sender, &listing_data.seller, listing_data.price, ExistenceRequirement::KeepAlive)?;
 
-			// Increment Order count
-			OrderCount::mutate(|id| -> Result<u64, DispatchError> {
-				let current_count = *id;
-				*id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableOrderId)?;
+            // Increment Order count
+            OrderCount::mutate(|id| -> Result<u64, DispatchError> {
+                let current_count = *id;
+                *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableOrderId)?;
 
-				Ok(current_count)
-			}).ok();
+                Ok(current_count)
+            }).ok();
 
-			// Get the current block for this order
-			let block_number = <system::Module<T>>::block_number();
+            // Get the current block for this order
+            let block_number = <system::Module<T>>::block_number();
 
-			// Create order data
-			let order = Order {
-				listing: listing_data.clone(),
-				buyer: sender.clone(),
-				block: block_number,
-			};
+            // Create order data
+            let order = Order {
+                listing: listing_data.clone(),
+                buyer: sender.clone(),
+                block: block_number,
+            };
 
-			// Save order history
-			OrderHistory::<T>::insert(order.listing.asset, order);
+            // Save order history
+            OrderHistory::<T>::insert(order.listing.asset, order);
 
-			Self::deposit_event(
-				RawEvent::WalletAssetBuySuccess(
-					listing_data.seller,
-					sender,
-					listing_data.id,
-					listing_data.price
-				)
-			);
+            Self::deposit_event(
+                RawEvent::WalletAssetBuySuccess(
+                    listing_data.seller,
+                    sender,
+                    listing_data.id,
+                    listing_data.price
+                )
+            );
 
-			Ok(())
-		}
+            Ok(())
+        }
 
-		/// Post an emote for the asset
-		///
-		/// - `asset`: (class_id, token_id)
-		/// - `emote`: name of the emote to use
-		#[weight = 10_000]
-		pub fn emote(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), emote: Vec<u8>) -> DispatchResult{
+        /// Post an emote for the asset
+        ///
+        /// - `asset`: (class_id, token_id)
+        /// - `emote`: name of the emote to use
+        #[weight = 10_000]
+        pub fn emote(origin, asset:(ClassIdOf<T>, TokenIdOf<T>), emote: Vec<u8>) -> DispatchResult{
 
-			let sender = ensure_signed(origin)?;
+            let sender = ensure_signed(origin)?;
 
-			// Ensure this token exists
-			ensure!(!AssetModule::<T>::tokens(asset.0, asset.1).is_none(), Error::<T>::AssetNotFound);
+            // Ensure this token exists
+            ensure!(!AssetModule::<T>::tokens(asset.0, asset.1).is_none(), Error::<T>::AssetNotFound);
 
-			// Convert the emote to a string
-			let str_emote = str::from_utf8(&emote).unwrap();
+            // Convert the emote to a string
+            let str_emote = str::from_utf8(&emote).unwrap();
 
-			// Ensure this is a valid emote
-			ensure!(!emojis::lookup(str_emote).is_none(), Error::<T>::InvalidEmote);
+            // Ensure this is a valid emote
+            ensure!(!emojis::lookup(str_emote).is_none(), Error::<T>::InvalidEmote);
 
-			// Get emoji
-			let emoji = emojis::lookup(str_emote).unwrap().as_str().as_bytes().to_vec();
+            // Get emoji
+            let emoji = emojis::lookup(str_emote).unwrap().as_str().as_bytes().to_vec();
 
-			// Get emotes data
-			let mut emotes_data = Emotes::<T>::get(asset, &sender);
+            // Get emotes data
+            let mut emotes_data = Emotes::<T>::get(asset, &sender);
 
-			// Append the new emoji
-			emotes_data.push(emoji.clone());
+            // Append the new emoji
+            emotes_data.push(emoji.clone());
 
-			// Add emote to storage
-			Emotes::<T>::insert(asset, &sender, emotes_data);
+            // Add emote to storage
+            Emotes::<T>::insert(asset, &sender, emotes_data);
 
-			Self::deposit_event(RawEvent::WalletAssetEmotePosted(sender, asset.0, asset.1, emoji));
+            Self::deposit_event(RawEvent::WalletAssetEmotePosted(sender, asset.0, asset.1, emoji));
 
-			Ok(())
-		}
+            Ok(())
+        }
 
-		/// Claim an asset
-		///
-		/// - `claim_id`: id of the claim
-		#[weight = 10_000]
-		pub fn claim(origin, claim_id: ClaimId) -> DispatchResult{
+        /// Claim an asset
+        ///
+        /// - `claim_id`: id of the claim
+        #[weight = 10_000]
+        pub fn claim(origin, claim_id: ClaimId) -> DispatchResult{
 
-			let sender = ensure_signed(origin)?;
+            let sender = ensure_signed(origin)?;
 
-			// Check that the wallet has permission to claim assets
-			ensure!(T::AllowClaim::get(), Error::<T>::ClaimingNotAllowed);
+            // Check that the wallet has permission to claim assets
+            ensure!(T::AllowClaim::get(), Error::<T>::ClaimingNotAllowed);
 
-			// Ensure the claim is for this sender
-			ensure!(OpenClaims::<T>::contains_key(&sender, claim_id), Error::<T>::ClaimNotFound);
+            // Ensure the claim is for this sender
+            ensure!(OpenClaims::<T>::contains_key(&sender, claim_id), Error::<T>::ClaimNotFound);
 
-			// Get claim data
-			let claim_data = OpenClaims::<T>::get(&sender, claim_id);
+            // Get claim data
+            let claim_data = OpenClaims::<T>::get(&sender, claim_id);
 
-			// Perform any domain related tasks to claiming
-			ensure!(T::Claim::claim(&sender, claim_data.asset).is_ok(), Error::<T>::ClaimCancelled);
+            // Perform any domain related tasks to claiming
+            ensure!(T::Claim::claim(&sender, claim_data.asset).is_ok(), Error::<T>::ClaimCancelled);
 
-			// Claim Account
-			let claim_account: T::AccountId = Self::get_claim_account();
+            // Claim Account
+            let claim_account: T::AccountId = Self::get_claim_account();
 
-			// Transfer asset into the reciever's account
-			Self::do_transfer(&claim_account, &sender, claim_data.asset).ok();
+            // Transfer asset into the reciever's account
+            Self::do_transfer(&claim_account, &sender, claim_data.asset).ok();
 
-			AllClaims::<T>::try_mutate(|asset_ids| -> DispatchResult {
-				let asset_index = asset_ids.iter().position(|x| *x == claim_data.asset).unwrap();
-				asset_ids.remove(asset_index);
+            AllClaims::<T>::try_mutate(|asset_ids| -> DispatchResult {
+                let asset_index = asset_ids.iter().position(|x| *x == claim_data.asset).unwrap();
+                asset_ids.remove(asset_index);
 
-				Ok(())
-			})?;
+                Ok(())
+            })?;
 
-			// Remove the open claim
-			OpenClaims::<T>::remove(&sender, claim_id);
+            // Remove the open claim
+            OpenClaims::<T>::remove(&sender, claim_id);
 
-			Self::deposit_event(RawEvent::WalletAssetClaimed(sender, claim_data.asset.0, claim_data.asset.1));
+            Self::deposit_event(RawEvent::WalletAssetClaimed(sender, claim_data.asset.0, claim_data.asset.1));
 
-			Ok(())
-		}
+            Ok(())
+        }
 
-		/// Create an asset claim for this account
-		///
-		/// - `receiver`: account to receive this asset
-		/// - `asset`: (class_id, token_id)
-		#[weight = 10_000]
-		pub fn create_claim(origin, receiver: T::AccountId, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
+        /// Create an asset claim for this account
+        ///
+        /// - `receiver`: account to receive this asset
+        /// - `asset`: (class_id, token_id)
+        #[weight = 10_000]
+        pub fn create_claim(origin, receiver: T::AccountId, asset:(ClassIdOf<T>, TokenIdOf<T>)) -> DispatchResult{
 
-			let sender = ensure_signed(origin)?;
+            let sender = ensure_signed(origin)?;
 
-			// Check that the wallet has permission to claim assets
-			ensure!(T::AllowClaim::get(), Error::<T>::ClaimingNotAllowed);
+            // Check that the wallet has permission to claim assets
+            ensure!(T::AllowClaim::get(), Error::<T>::ClaimingNotAllowed);
 
-			// Check that the sender owns this asset
-			let check_ownership = Self::check_ownership(&sender, &asset)?;
-			ensure!(check_ownership, Error::<T>::NoPermission);
+            // Check that the sender owns this asset
+            let check_ownership = Self::check_ownership(&sender, &asset)?;
+            ensure!(check_ownership, Error::<T>::NoPermission);
 
-			// Ensure that the sender is the owner of this class
-			let class_info = AssetModule::<T>::classes(asset.0).ok_or(Error::<T>::AssetNotFound)?;
-			ensure!(sender == class_info.owner, Error::<T>::NoPermission);
+            // Ensure that the sender is the owner of this class
+            let class_info = AssetModule::<T>::classes(asset.0).ok_or(Error::<T>::AssetNotFound)?;
+            ensure!(sender == class_info.owner, Error::<T>::NoPermission);
 
-			// Ensure the claim is created
-			let claim_created = Self::do_create_claim(&sender, &receiver, asset)?;
-			ensure!(claim_created, Error::<T>::ClaimCreateFailed);
+            // Ensure the claim is created
+            let claim_created = Self::do_create_claim(&sender, &receiver, asset)?;
+            ensure!(claim_created, Error::<T>::ClaimCreateFailed);
 
-			Self::deposit_event(RawEvent::WalletClaimCreated(sender, receiver, asset.0, asset.1));
+            Self::deposit_event(RawEvent::WalletClaimCreated(sender, receiver, asset.0, asset.1));
 
-			Ok(())
-		}
+            Ok(())
+        }
 
     }
 }
 
 // Module Implementation
 impl<T: Config> Module<T> {
-	fn check_ownership(
-    	owner: &T::AccountId,
-    	asset: &(ClassIdOf<T>, TokenIdOf<T>)
-	) -> Result<bool, DispatchError> {
-    	return Ok(AssetModule::<T>::is_owner(&owner, *asset));
-  	}
+    fn check_ownership(
+        owner: &T::AccountId,
+        asset: &(ClassIdOf<T>, TokenIdOf<T>),
+    ) -> Result<bool, DispatchError> {
+        return Ok(AssetModule::<T>::is_owner(&owner, *asset));
+    }
 
-  	fn do_transfer(
-    	from: &T::AccountId,
-    	to: &T::AccountId,
-    	asset: (ClassIdOf<T>, TokenIdOf<T>)
-	) -> Result<bool, DispatchError> {
-    	AssetModule::<T>::transfer(&from, &to, asset).ok();
-    	return Ok(true)
-  	}
+    fn do_transfer(
+        from: &T::AccountId,
+        to: &T::AccountId,
+        asset: (ClassIdOf<T>, TokenIdOf<T>),
+    ) -> Result<bool, DispatchError> {
+        AssetModule::<T>::transfer(&from, &to, asset).ok();
+        return Ok(true);
+    }
 
-	fn is_listed(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-		return Self::all_listings().contains(asset);
-	}
+    fn is_listed(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+        return Self::all_listings().contains(asset);
+    }
 
-	fn is_claiming(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-		return Self::all_claims().contains(asset)
-	}
+    fn is_claiming(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+        return Self::all_claims().contains(asset);
+    }
 
-	fn get_claim_account() -> T::AccountId {
-		return T::ModuleId::get().into_sub_account(100u32)
-	}
+    fn get_claim_account() -> T::AccountId {
+        return T::ModuleId::get().into_sub_account(100u32);
+    }
 
-	fn get_escrow_account() -> T::AccountId {
-		return T::ModuleId::get().into_account()
-	}
+    fn get_escrow_account() -> T::AccountId {
+        return T::ModuleId::get().into_account();
+    }
 
-	pub fn is_locked(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-		return Self::is_listed(&asset) || Self::is_claiming(&asset)
-	}
+    pub fn is_locked(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
+        return Self::is_listed(&asset) || Self::is_claiming(&asset);
+    }
 
-	fn do_unlist(sender: &T::AccountId, listing_data: ListingOf<T>) -> Result<bool, DispatchError> {
-		//Escrow Account
-		let escrow_account: T::AccountId = Self::get_escrow_account();
+    fn do_unlist(sender: &T::AccountId, listing_data: ListingOf<T>) -> Result<bool, DispatchError> {
+        //Escrow Account
+        let escrow_account: T::AccountId = Self::get_escrow_account();
 
-		// Transfer out of escrow
-		Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
+        // Transfer out of escrow
+        Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
 
-		// Decrease Listing count
-		ListingCount::mutate(|id| -> Result<u64, DispatchError> {
-			let current_count = *id;
-			*id = id.checked_sub(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
+        // Decrease Listing count
+        ListingCount::mutate(|id| -> Result<u64, DispatchError> {
+            let current_count = *id;
+            *id = id
+                .checked_sub(One::one())
+                .ok_or(Error::<T>::NoAvailableListingId)?;
 
-			Ok(current_count)
-		}).ok();
+            Ok(current_count)
+        })
+        .ok();
 
-		// Remove the asset from all listings
-		AllListings::<T>::try_mutate(|asset_ids| -> DispatchResult {
-			let asset_index = asset_ids.iter().position(|x| *x == listing_data.asset).unwrap();
-			asset_ids.remove(asset_index);
+        // Remove the asset from all listings
+        AllListings::<T>::try_mutate(|asset_ids| -> DispatchResult {
+            let asset_index = asset_ids
+                .iter()
+                .position(|x| *x == listing_data.asset)
+                .unwrap();
+            asset_ids.remove(asset_index);
 
-			Ok(())
-		})?;
+            Ok(())
+        })?;
 
-		// remove the listing
-		Listings::<T>::remove(listing_data.id);
+        // remove the listing
+        Listings::<T>::remove(listing_data.id);
 
-		// Remove listing from owner
-		// Get owner listing data
-		let mut owner_data = ListingsByOwner::<T>::get(listing_data.clone().seller);
+        // Remove listing from owner
+        // Get owner listing data
+        let mut owner_data = ListingsByOwner::<T>::get(listing_data.clone().seller);
 
-		// Remove the old listing id
-		owner_data.retain(|&x| x != listing_data.id);
+        // Remove the old listing id
+        owner_data.retain(|&x| x != listing_data.id);
 
-		// Update owner listings
-		ListingsByOwner::<T>::insert(listing_data.clone().seller, owner_data);
+        // Update owner listings
+        ListingsByOwner::<T>::insert(listing_data.clone().seller, owner_data);
 
-		Ok(true)
-	}
+        Ok(true)
+    }
 
-	fn do_create_claim(
-		owner: &T::AccountId,
-		receiver: &T::AccountId,
-		asset: (ClassIdOf<T>, TokenIdOf<T>)
-	) -> Result<bool, DispatchError> {
-		// Get claim account
-		let claim_account: T::AccountId = Self::get_claim_account();
+    fn do_create_claim(
+        owner: &T::AccountId,
+        receiver: &T::AccountId,
+        asset: (ClassIdOf<T>, TokenIdOf<T>),
+    ) -> Result<bool, DispatchError> {
+        // Get claim account
+        let claim_account: T::AccountId = Self::get_claim_account();
 
-		// Transfer asset into the claim account
-		Self::do_transfer(&owner, &claim_account, asset).ok();
+        // Transfer asset into the claim account
+        Self::do_transfer(&owner, &claim_account, asset).ok();
 
-		// Create claim data
-		let claim = Claim {
-		receiver: receiver.clone(),
-		asset,
-		};
+        // Create claim data
+        let claim = Claim {
+            receiver: receiver.clone(),
+            asset,
+        };
 
-		// Add the new claim id to storage
-		let claim_id = NextClaimId::try_mutate(|id| -> Result<ClaimId, DispatchError> {
-		let current_id = *id;
-		*id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableClaimId)?;
+        // Add the new claim id to storage
+        let claim_id = NextClaimId::try_mutate(|id| -> Result<ClaimId, DispatchError> {
+            let current_id = *id;
+            *id = id
+                .checked_add(One::one())
+                .ok_or(Error::<T>::NoAvailableClaimId)?;
 
-		Ok(current_id)
-		})?;
+            Ok(current_id)
+        })?;
 
-		// Add claim to storage
-		OpenClaims::<T>::insert(receiver, claim_id, claim);
-		AllClaims::<T>::append(&asset);
+        // Add claim to storage
+        OpenClaims::<T>::insert(receiver, claim_id, claim);
+        AllClaims::<T>::append(&asset);
 
-		Ok(true)
-	}
+        Ok(true)
+    }
 }
 
 // Implement OnTransferHandler
 impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
-	fn transfer(from: &T::AccountId, to: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
-		Self::do_transfer(&from, &to, asset)?;
-		Module::<T>::deposit_event(RawEvent::WalletAssetTransferred(from.clone(), to.clone(), asset.0, asset.1));
-		Ok(())
-	}
+    fn transfer(
+        from: &T::AccountId,
+        to: &T::AccountId,
+        asset: (T::ClassId, T::TokenId),
+    ) -> DispatchResult {
+        Self::do_transfer(&from, &to, asset)?;
+        Module::<T>::deposit_event(RawEvent::WalletAssetTransferred(
+            from.clone(),
+            to.clone(),
+            asset.0,
+            asset.1,
+        ));
+        Ok(())
+    }
 }
 
 // Implement OnBurnHandler
 impl<T: Config> OnBurnHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
-	fn burn(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
-		AssetModule::<T>::burn(&owner, asset)?;
-		Module::<T>::deposit_event(RawEvent::WalletAssetBurned(owner.clone(), asset.0, asset.1));
-		Ok(())
-	}
+    fn burn(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
+        AssetModule::<T>::burn(&owner, asset)?;
+        Module::<T>::deposit_event(RawEvent::WalletAssetBurned(owner.clone(), asset.0, asset.1));
+        Ok(())
+    }
 }
 
 // Implement OnClaimHandler
 impl<T: Config> OnClaimHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
-	fn claim(_owner: &T::AccountId, _asset: (T::ClassId, T::TokenId)) -> DispatchResult {
-		Ok(())
-	}
+    fn claim(_owner: &T::AccountId, _asset: (T::ClassId, T::TokenId)) -> DispatchResult {
+        Ok(())
+    }
 }

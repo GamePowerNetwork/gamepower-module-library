@@ -5,16 +5,16 @@ use super::*;
 use crate as gamepower_wallet;
 use balances;
 use frame_support::{
-	parameter_types,
-	traits::{Filter, InstanceFilter},
+    parameter_types,
+    traits::{Filter, InstanceFilter},
 };
 use frame_system as system;
 use gamepower_primitives::{WalletAssetData, WalletClassData};
-use sp_core::{H256};
+use sp_core::H256;
 use sp_runtime::ModuleId;
 use sp_runtime::{
-  testing::Header,
-  traits::{BlakeTwo256, IdentityLookup},
+    testing::Header,
+    traits::{BlakeTwo256, IdentityLookup},
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -47,28 +47,28 @@ impl_outer_origin! {
 pub type AccountId = u64;
 
 impl system::Config for Test {
-  type BaseCallFilter = ();
-  type BlockWeights = ();
-  type BlockLength = ();
-  type DbWeight = ();
-  type Origin = Origin;
-  type Call = Call;
-  type Index = u64;
-  type BlockNumber = u64;
-  type Hash = H256;
-  type Hashing = BlakeTwo256;
-  type AccountId = u64;
-  type AccountData = balances::AccountData<u64>;
-  type Lookup = IdentityLookup<Self::AccountId>;
-  type Header = Header;
-  type Event = Event;
-  type BlockHashCount = BlockHashCount;
-  type Version = ();
-  type PalletInfo = PalletInfo;
-  type OnNewAccount = ();
-  type OnKilledAccount = ();
-  type SystemWeightInfo = ();
-  type SS58Prefix = ();
+    type BaseCallFilter = ();
+    type BlockWeights = ();
+    type BlockLength = ();
+    type DbWeight = ();
+    type Origin = Origin;
+    type Call = Call;
+    type Index = u64;
+    type BlockNumber = u64;
+    type Hash = H256;
+    type Hashing = BlakeTwo256;
+    type AccountId = u64;
+    type AccountData = balances::AccountData<u64>;
+    type Lookup = IdentityLookup<Self::AccountId>;
+    type Header = Header;
+    type Event = Event;
+    type BlockHashCount = BlockHashCount;
+    type Version = ();
+    type PalletInfo = PalletInfo;
+    type OnNewAccount = ();
+    type OnKilledAccount = ();
+    type SystemWeightInfo = ();
+    type SS58Prefix = ();
 }
 
 parameter_types! {
@@ -76,42 +76,41 @@ parameter_types! {
   pub const MaxLocks: u32 = 50;
 }
 impl balances::Config for Test {
-  type MaxLocks = ();
-  type Balance = u64;
-  type Event = Event;
-  type DustRemoval = ();
-  type ExistentialDeposit = ExistentialDeposit;
-  type AccountStore = System;
-  type WeightInfo = ();
+    type MaxLocks = ();
+    type Balance = u64;
+    type Event = Event;
+    type DustRemoval = ();
+    type ExistentialDeposit = ExistentialDeposit;
+    type AccountStore = System;
+    type WeightInfo = ();
 }
 
 parameter_types! {
-  	pub AllowTransfer: bool = true;
-	pub AllowBurn: bool = true;
-	pub AllowEscrow: bool = true;
-	pub AllowClaim: bool = true;
-	pub const WalletModuleId: ModuleId = ModuleId(*b"gpwallet");
+      pub AllowTransfer: bool = true;
+    pub AllowBurn: bool = true;
+    pub AllowEscrow: bool = true;
+    pub AllowClaim: bool = true;
+    pub const WalletModuleId: ModuleId = ModuleId(*b"gpwallet");
 }
 
 impl gamepower_wallet::Config for Test {
-  	type Event = Event;
-	type Transfer = GamePowerWallet;
-	type Burn = GamePowerWallet;
-	type Claim = GamePowerWallet;
-	type AllowTransfer = AllowTransfer;
-	type AllowBurn = AllowBurn;
-	type AllowEscrow = AllowEscrow;
-	type AllowClaim = AllowClaim;
-	type Currency = Balances;
-	type ModuleId = WalletModuleId;
+    type Event = Event;
+    type Transfer = GamePowerWallet;
+    type Burn = GamePowerWallet;
+    type Claim = GamePowerWallet;
+    type AllowTransfer = AllowTransfer;
+    type AllowBurn = AllowBurn;
+    type AllowEscrow = AllowEscrow;
+    type AllowClaim = AllowClaim;
+    type Currency = Balances;
+    type ModuleId = WalletModuleId;
 }
 
-
 impl orml_nft::Config for Test {
-	type ClassId = u32;
-	type TokenId = u64;
-	type ClassData = ();
-	type TokenData = ();
+    type ClassId = u32;
+    type TokenId = u64;
+    type ClassData = ();
+    type TokenData = ();
 }
 
 pub const ALICE: AccountId = 1;
