@@ -1,6 +1,10 @@
 # GamePower Module Library
 An open library for integrating substrate runtimes with the [GamePower Network](https://www.gamepower.network)
 
+<p align="center">
+  <img alt="step3" src="./docs/cover.png">
+</p>
+
 
 ## Project Overview :page_facing_up:
 
