@@ -1,0 +1,9 @@
+cargo-features = ["resolver"]
+
+[workspace]
+members = [
+	"traits",
+	"wallet",
+	"primitives",
+]
+resolver = "2"
