@@ -22,7 +22,9 @@ jobs:
           toolchain: nightly
           override: true
     - name: Build
-      run: cargo +nightly build --verbose --manifest-path Cargo.toml
+      run: |
+        echo $CWD
+        cargo +nightly build --verbose --manifest-path Cargo.toml
     - name: Run tests
       run: |
         echo $CWD
