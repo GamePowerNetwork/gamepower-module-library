@@ -23,6 +23,6 @@ jobs:
           override: true
           components: rustfmt, clippy
     - name: Build
-      run: cargo +nightly build --verbose
+      run: cargo +nightly build --verbose --manifest-path ./Cargo.toml
     - name: Run tests
-      run: cargo +nightly test --verbose
+      run: cargo +nightly test --verbose --manifest-path ./Cargo.toml
