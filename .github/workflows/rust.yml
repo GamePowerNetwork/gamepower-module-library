@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  working-directory: ./
 
 jobs:
   build:
@@ -23,6 +24,7 @@ jobs:
           override: true
           components: rustfmt, clippy
     - name: Build
+      working-directory: ${{env.working-directory}}
       run: cargo +nightly build --verbose --manifest-path ./Cargo.toml
     - name: Run tests
       run: cargo +nightly test --verbose --manifest-path ./Cargo.toml
