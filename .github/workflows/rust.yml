@@ -16,16 +16,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Install latest nightly
-      uses: actions-rs/toolchain@v1
-      with:
-          toolchain: nightly
-          override: true
     - name: Build
-      run: |
-        print $CWD
-        cargo +nightly build --verbose --manifest-path Cargo.toml
+      run: cargo build --verbose --manifest-path Cargo.toml
     - name: Run tests
-      run: |
-        print $CWD
-        cargo +nightly test --verbose --manifest-path Cargo.toml
+      run: cargo test --verbose --manifest-path Cargo.toml
