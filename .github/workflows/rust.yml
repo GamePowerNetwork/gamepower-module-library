@@ -23,9 +23,9 @@ jobs:
           override: true
     - name: Build
       run: |
-        echo $CWD
+        print $CWD
         cargo +nightly build --verbose --manifest-path Cargo.toml
     - name: Run tests
       run: |
-        echo $CWD
+        print $CWD
         cargo +nightly test --verbose --manifest-path Cargo.toml
