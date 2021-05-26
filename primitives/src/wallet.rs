@@ -1,8 +1,8 @@
 use codec::{Decode, Encode};
-use sp_std::vec::Vec;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_runtime::RuntimeDebug;
+use sp_std::vec::Vec;
 
 /// Listing Id
 pub type ListingId = u64;
