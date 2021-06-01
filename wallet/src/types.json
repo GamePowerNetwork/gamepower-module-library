@@ -1,0 +1,22 @@
+{
+	"ListingId": "u64",
+	"ClaimId": "u128",
+	"ListingOf": "Listing",
+	"Listing": {
+	  "id": "ListingId",
+	  "owner": "AccountId",
+	  "asset": "Asset",
+	  "price": "Balance"
+	},
+	"OrderOf": "Order",
+	"Order": {
+	  "listing": "ListingOf",
+	  "buyer": "AccountId",
+	  "block": "BlockNumber"
+	},
+	"ClaimOf": "Claim",
+	"Claim": {
+	  "receiver": "AccountId",
+	  "asset": "Asset"
+	}
+  }
