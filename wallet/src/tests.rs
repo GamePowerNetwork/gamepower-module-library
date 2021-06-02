@@ -185,8 +185,11 @@ fn buy_should_work() {
             100
         ));
 
+		assert_eq!(GamePowerWallet::all_listings().len(), 1, "Listing not created");
         // Make a valid purchase
         assert_ok!(GamePowerWallet::buy(Origin::signed(2), LISTING_ID));
+		assert_eq!(GamePowerWallet::all_listings().len(), 0, "Listing not removed from all!");
+		assert_eq!(GamePowerWallet::listings(0), None, "Listing not removed");
     });
 }
 
