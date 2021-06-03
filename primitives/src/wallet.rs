@@ -7,7 +7,7 @@ use sp_std::vec::Vec;
 /// Listing Id
 pub type ListingId = u64;
 /// Claim Id
-pub type ClaimId = u128;
+pub type ClaimId = u64;
 
 #[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]

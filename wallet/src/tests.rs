@@ -272,7 +272,7 @@ fn create_claim_should_fail() {
         assert_eq!(
             GamePowerWallet::open_claims(BOB, 0).is_some(),
             false,
-            "Claim should not added"
+            "Claim should not be added"
         );
     });
 }
