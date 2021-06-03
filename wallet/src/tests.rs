@@ -81,6 +81,32 @@ fn create_listing_should_work() {
             (CLASS_ID, TOKEN_ID),
             100
         ));
+
+        assert_eq!(
+            GamePowerWallet::next_listing_id(),
+            1,
+            "The next listing id is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::listing_count(),
+            1,
+            "The total number of listings is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::all_listings().len(),
+            1,
+            "Listing not added to all"
+        );
+        assert_eq!(
+            GamePowerWallet::listings_by_owner(1),
+            Some(vec![0]),
+            "Listing by owner not added"
+        );
+        assert_eq!(
+            GamePowerWallet::listings(0).is_some(),
+            true,
+            "Listing not added"
+        );
     });
 }
 
@@ -95,6 +121,17 @@ fn create_listing_should_fail() {
         assert_noop!(
             GamePowerWallet::list(Origin::signed(1), (CLASS_ID_NOT_EXIST, TOKEN_ID), 100),
             Error::<Test>::NoPermission
+        );
+
+        assert_eq!(
+            GamePowerWallet::listing_count(),
+            0,
+            "The total number of listings is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::all_listings().len(),
+            0,
+            "The number of all listings is incorrect"
         );
     });
 }
@@ -115,6 +152,22 @@ fn unlisting_should_work() {
 
         // Properly unlist
         assert_ok!(GamePowerWallet::unlist(Origin::signed(1), LISTING_ID));
+        assert_eq!(
+            GamePowerWallet::listing_count(),
+            0,
+            "The total number of listings is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::all_listings().len(),
+            0,
+            "Listing not removed from all"
+        );
+        assert_eq!(
+            GamePowerWallet::listings_by_owner(1),
+            Some(vec![]),
+            "Listing by owner not removed"
+        );
+        assert_eq!(GamePowerWallet::listings(0), None, "Listing not removed");
     });
 }
 
@@ -137,6 +190,27 @@ fn unlisting_should_fail() {
             GamePowerWallet::unlist(Origin::signed(2), LISTING_ID),
             Error::<Test>::NoPermission
         );
+
+        assert_eq!(
+            GamePowerWallet::listing_count(),
+            1,
+            "The total number of listings is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::all_listings().len(),
+            1,
+            "The number of all listings is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::listings_by_owner(1),
+            Some(vec![0]),
+            "Listing by owner should have a value"
+        );
+        assert_eq!(
+            GamePowerWallet::listings(0).is_some(),
+            true,
+            "Listing should not be removed"
+        );
     });
 }
 
@@ -153,6 +227,22 @@ fn create_claim_should_work() {
             BOB,
             (CLASS_ID, TOKEN_ID)
         ));
+
+        assert_eq!(
+            GamePowerWallet::next_claim_id(),
+            1,
+            "The next claim id is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::all_claims().len(),
+            1,
+            "Claim not added to all"
+        );
+        assert_eq!(
+            GamePowerWallet::open_claims(BOB, 0).is_some(),
+            true,
+            "Claim not added"
+        );
     });
 }
 
@@ -168,6 +258,22 @@ fn create_claim_should_fail() {
             GamePowerWallet::create_claim(Origin::signed(2), BOB, (CLASS_ID, TOKEN_ID)),
             Error::<Test>::NoPermission
         );
+
+        assert_eq!(
+            GamePowerWallet::next_claim_id(),
+            0,
+            "The next claim id is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::all_claims().len(),
+            0,
+            "Claim not added to all"
+        );
+        assert_eq!(
+            GamePowerWallet::open_claims(BOB, 0).is_some(),
+            false,
+            "Claim should not added"
+        );
     });
 }
 
@@ -178,6 +284,9 @@ fn buy_should_work() {
         assert_ok!(OrmlNFT::create_class(&ALICE, vec![1], ()));
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
+        // There should be no listing
+        assert_eq!(GamePowerWallet::listings(0), None, "Listing was not empty");
+
         // Create a valid listing
         assert_ok!(GamePowerWallet::list(
             Origin::signed(1),
@@ -185,11 +294,33 @@ fn buy_should_work() {
             100
         ));
 
-		assert_eq!(GamePowerWallet::all_listings().len(), 1, "Listing not created");
+        assert_eq!(
+            GamePowerWallet::all_listings().len(),
+            1,
+            "Listing not created"
+        );
         // Make a valid purchase
         assert_ok!(GamePowerWallet::buy(Origin::signed(2), LISTING_ID));
-		assert_eq!(GamePowerWallet::all_listings().len(), 0, "Listing not removed from all!");
-		assert_eq!(GamePowerWallet::listings(0), None, "Listing not removed");
+        assert_eq!(
+            GamePowerWallet::listing_count(),
+            0,
+            "The total number of listings is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::all_listings().len(),
+            0,
+            "Listing not removed from all!"
+        );
+        assert_eq!(
+            GamePowerWallet::listings_by_owner(1),
+            Some(vec![]),
+            "Listing by owner not removed"
+        );
+        assert_eq!(GamePowerWallet::listings(0), None, "Listing not removed");
+
+        // Check Balances
+        assert_eq!(Balances::free_balance(ALICE), 1000000 + 100);
+        assert_eq!(Balances::free_balance(BOB), 1000000 - 100);
     });
 }
 
@@ -212,6 +343,31 @@ fn buy_should_fail() {
             GamePowerWallet::buy(Origin::signed(2), LISTING_ID_NOT_EXIST),
             Error::<Test>::ListingNotFound
         );
+
+        assert_eq!(
+            GamePowerWallet::listing_count(),
+            1,
+            "The total number of listings is incorrect"
+        );
+        assert_eq!(
+            GamePowerWallet::all_listings().len(),
+            1,
+            "Listing should not be removed from all!"
+        );
+        assert_eq!(
+            GamePowerWallet::listings_by_owner(ALICE),
+            Some(vec![0]),
+            "Listing by owner should not be removed"
+        );
+        assert_eq!(
+            GamePowerWallet::listings(0).is_some(),
+            true,
+            "Listing should not be removed"
+        );
+
+        // Check Balances
+        assert_eq!(Balances::free_balance(ALICE), 1000000);
+        assert_eq!(Balances::free_balance(BOB), 1000000);
     });
 }
 
@@ -228,6 +384,12 @@ fn emote_should_work() {
             (CLASS_ID, TOKEN_ID),
             "fish".as_bytes().to_vec()
         ));
+
+        assert_eq!(
+            GamePowerWallet::emotes((CLASS_ID, TOKEN_ID), BOB).len(),
+            1,
+            "Emote should be added"
+        );
     });
 }
 
@@ -246,6 +408,12 @@ fn emote_should_fail() {
                 "fasdfasdfaish".as_bytes().to_vec()
             ),
             Error::<Test>::InvalidEmote
+        );
+
+        assert_eq!(
+            GamePowerWallet::emotes((CLASS_ID, TOKEN_ID), BOB).len(),
+            0,
+            "Emote should not be added"
         );
     });
 }

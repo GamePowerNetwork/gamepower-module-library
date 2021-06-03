@@ -131,7 +131,7 @@ decl_storage! {
     /// Get the next listing id
     pub NextListingId get(fn next_listing_id): ListingId;
     /// A fast and simple count of all current listings
-    pub ListingCount: u64;
+    pub ListingCount get(fn listing_count): u64;
     /// A count of all orders made through the wallet
     pub OrderCount: u64;
     /// A history of orders for an asset
@@ -369,20 +369,23 @@ decl_module! {
             ensure!(T::AllowEscrow::get(), Error::<T>::EscrowNotAllowed);
 
             // Get listing data
-            Listings::<T>::try_mutate(listing_id, |listing_data| -> DispatchResult {
+            Listings::<T>::try_mutate_exists(listing_id, |listing_data| -> DispatchResult {
                 let data = listing_data.as_mut().ok_or(Error::<T>::ListingNotFound)?;
 
                 // Ensure the listing is in storage for this user
                 ensure!(sender == data.seller, Error::<T>::NoPermission);
 
-                // Ensure listing was removed
-                let is_unlisted = Self::do_unlist(&sender, data.clone())?;
+                // Ensure listing data was removed
+                let is_unlisted = Self::do_unlist(&sender, data.clone(), false)?;
                 ensure!(is_unlisted, Error::<T>::UnlistingFailed);
 
                 Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_id, data.asset.0, data.asset.1));
 
                 Ok(())
             })?;
+
+            // Remove the actual listing from state
+            Listings::<T>::remove(listing_id);
 
             Ok(())
         }
@@ -405,12 +408,18 @@ decl_module! {
             Listings::<T>::try_mutate(listing_id, |listing_data| -> DispatchResult {
                 let data = listing_data.as_mut().ok_or(Error::<T>::ListingNotFound)?;
 
-                // Ensure listing was removed
-                let is_unlisted = Self::do_unlist(&sender, data.clone())?;
+                // Now that the order has been placed, let's remove the listing
+                // Ensure listing data was removed
+                let is_unlisted = Self::do_unlist(&data.seller, data.clone(), true)?;
                 ensure!(is_unlisted, Error::<T>::UnlistingFailed);
 
                 // Transfer funds to seller
                 <T as Config>::Currency::transfer(&sender, &data.seller, data.price, ExistenceRequirement::KeepAlive)?;
+
+                // Transfer the asset out of escrow to the buyer
+                //Escrow Account
+                let escrow_account: T::AccountId = Self::get_escrow_account();
+                Self::do_transfer(&escrow_account, &sender, data.asset).ok();
 
                 // Increment Order count
                 OrderCount::mutate(|id| -> Result<u64, DispatchError> {
@@ -444,6 +453,9 @@ decl_module! {
 
                 Ok(())
             })?;
+
+            // Remove the actual listing from state
+            Listings::<T>::remove(listing_id);
 
             Ok(())
         }
@@ -598,12 +610,18 @@ impl<T: Config> Module<T> {
         Self::is_listed(&asset) || Self::is_claiming(&asset)
     }
 
-    fn do_unlist(sender: &T::AccountId, listing_data: ListingOf<T>) -> Result<bool, DispatchError> {
+    fn do_unlist(
+        sender: &T::AccountId,
+        listing_data: ListingOf<T>,
+        is_buy: bool,
+    ) -> Result<bool, DispatchError> {
         //Escrow Account
         let escrow_account: T::AccountId = Self::get_escrow_account();
 
         // Transfer out of escrow
-        Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
+        if !is_buy {
+            Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
+        }
 
         // Decrease Listing count
         ListingCount::mutate(|id| -> Result<u64, DispatchError> {
@@ -626,9 +644,6 @@ impl<T: Config> Module<T> {
 
             Ok(())
         })?;
-
-        // remove the listing
-        Listings::<T>::remove(listing_data.id);
 
         // Remove listing from owner
         // Get owner listing data
