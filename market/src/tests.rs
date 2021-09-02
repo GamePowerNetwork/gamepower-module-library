@@ -1,4 +1,4 @@
-use crate::mock::{Event, *};
+use crate::mock::*;
 use crate::Error;
 use frame_support::{assert_noop, assert_ok};
 
@@ -10,7 +10,7 @@ fn transfer_should_work() {
         assert_ok!(OrmlNFT::mint(&BOB, CLASS_ID, vec![1], ()));
 
         // Make a valid transfer
-        assert_ok!(GamePowerWallet::transfer(
+        assert_ok!(GamePowerMarket::transfer(
             Origin::signed(2),
             ALICE,
             (CLASS_ID, TOKEN_ID)
@@ -28,7 +28,7 @@ fn transfer_should_fail() {
 
         // Try to transfer a token for a class that doesn't exist
         assert_noop!(
-            GamePowerWallet::transfer(
+            GamePowerMarket::transfer(
                 Origin::signed(2),
                 ALICE,
                 (CLASS_ID_NOT_EXIST, TOKEN_ID_NOT_EXIST)
@@ -46,7 +46,7 @@ fn burn_should_work() {
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
         // Make a valid burn
-        assert_ok!(GamePowerWallet::burn(
+        assert_ok!(GamePowerMarket::burn(
             Origin::signed(1),
             (CLASS_ID, TOKEN_ID)
         ));
@@ -62,7 +62,7 @@ fn burn_should_fail() {
 
         // Try to burn a token for a class that doesn't exist
         assert_noop!(
-            GamePowerWallet::burn(Origin::signed(1), (CLASS_ID_NOT_EXIST, TOKEN_ID)),
+            GamePowerMarket::burn(Origin::signed(1), (CLASS_ID_NOT_EXIST, TOKEN_ID)),
             Error::<Test>::NoPermission
         );
     });
@@ -76,34 +76,29 @@ fn create_listing_should_work() {
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
         // Create a valid listing
-        assert_ok!(GamePowerWallet::list(
+        assert_ok!(GamePowerMarket::list(
             Origin::signed(1),
             (CLASS_ID, TOKEN_ID),
             100
         ));
 
         assert_eq!(
-            GamePowerWallet::next_listing_id(),
+            GamePowerMarket::next_listing_id(),
             1,
             "The next listing id is incorrect"
         );
         assert_eq!(
-            GamePowerWallet::listing_count(),
-            1,
-            "The total number of listings is incorrect"
-        );
-        assert_eq!(
-            GamePowerWallet::all_listings().len(),
+            GamePowerMarket::all_listings().len(),
             1,
             "Listing not added to all"
         );
         assert_eq!(
-            GamePowerWallet::listings_by_owner(1),
+            GamePowerMarket::listings_by_owner(1),
             Some(vec![0]),
             "Listing by owner not added"
         );
         assert_eq!(
-            GamePowerWallet::listings(0).is_some(),
+            GamePowerMarket::listings(0).is_some(),
             true,
             "Listing not added"
         );
@@ -119,17 +114,12 @@ fn create_listing_should_fail() {
 
         // Try to create a listing for a class that doesn't exist
         assert_noop!(
-            GamePowerWallet::list(Origin::signed(1), (CLASS_ID_NOT_EXIST, TOKEN_ID), 100),
+            GamePowerMarket::list(Origin::signed(1), (CLASS_ID_NOT_EXIST, TOKEN_ID), 100),
             Error::<Test>::NoPermission
         );
 
         assert_eq!(
-            GamePowerWallet::listing_count(),
-            0,
-            "The total number of listings is incorrect"
-        );
-        assert_eq!(
-            GamePowerWallet::all_listings().len(),
+            GamePowerMarket::all_listings().len(),
             0,
             "The number of all listings is incorrect"
         );
@@ -144,30 +134,25 @@ fn unlisting_should_work() {
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
         // Make a valid listing
-        assert_ok!(GamePowerWallet::list(
+        assert_ok!(GamePowerMarket::list(
             Origin::signed(1),
             (CLASS_ID, TOKEN_ID),
             100
         ));
 
         // Properly unlist
-        assert_ok!(GamePowerWallet::unlist(Origin::signed(1), LISTING_ID));
+        assert_ok!(GamePowerMarket::unlist(Origin::signed(1), LISTING_ID));
         assert_eq!(
-            GamePowerWallet::listing_count(),
-            0,
-            "The total number of listings is incorrect"
-        );
-        assert_eq!(
-            GamePowerWallet::all_listings().len(),
+            GamePowerMarket::all_listings().len(),
             0,
             "Listing not removed from all"
         );
         assert_eq!(
-            GamePowerWallet::listings_by_owner(1),
+            GamePowerMarket::listings_by_owner(1),
             Some(vec![]),
             "Listing by owner not removed"
         );
-        assert_eq!(GamePowerWallet::listings(0), None, "Listing not removed");
+        assert_eq!(GamePowerMarket::listings(0), None, "Listing not removed");
     });
 }
 
@@ -179,7 +164,7 @@ fn unlisting_should_fail() {
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
         // Make a valid listing
-        assert_ok!(GamePowerWallet::list(
+        assert_ok!(GamePowerMarket::list(
             Origin::signed(1),
             (CLASS_ID, TOKEN_ID),
             100
@@ -187,27 +172,22 @@ fn unlisting_should_fail() {
 
         // Try to unlist a listing that doesn't belong to the original signer
         assert_noop!(
-            GamePowerWallet::unlist(Origin::signed(2), LISTING_ID),
+            GamePowerMarket::unlist(Origin::signed(2), LISTING_ID),
             Error::<Test>::NoPermission
         );
 
         assert_eq!(
-            GamePowerWallet::listing_count(),
-            1,
-            "The total number of listings is incorrect"
-        );
-        assert_eq!(
-            GamePowerWallet::all_listings().len(),
+            GamePowerMarket::all_listings().len(),
             1,
             "The number of all listings is incorrect"
         );
         assert_eq!(
-            GamePowerWallet::listings_by_owner(1),
+            GamePowerMarket::listings_by_owner(1),
             Some(vec![0]),
             "Listing by owner should have a value"
         );
         assert_eq!(
-            GamePowerWallet::listings(0).is_some(),
+            GamePowerMarket::listings(0).is_some(),
             true,
             "Listing should not be removed"
         );
@@ -222,24 +202,24 @@ fn create_claim_should_work() {
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
         // Create a valid claim
-        assert_ok!(GamePowerWallet::create_claim(
+        assert_ok!(GamePowerMarket::create_claim(
             Origin::signed(1),
             BOB,
             (CLASS_ID, TOKEN_ID)
         ));
 
         assert_eq!(
-            GamePowerWallet::next_claim_id(),
+            GamePowerMarket::next_claim_id(),
             1,
             "The next claim id is incorrect"
         );
         assert_eq!(
-            GamePowerWallet::all_claims().len(),
+            GamePowerMarket::all_claims().len(),
             1,
             "Claim not added to all"
         );
         assert_eq!(
-            GamePowerWallet::open_claims(BOB, 0).is_some(),
+            GamePowerMarket::open_claims(BOB, 0).is_some(),
             true,
             "Claim not added"
         );
@@ -255,22 +235,22 @@ fn create_claim_should_fail() {
 
         // Try to create a claim for a token you don't own
         assert_noop!(
-            GamePowerWallet::create_claim(Origin::signed(2), BOB, (CLASS_ID, TOKEN_ID)),
+            GamePowerMarket::create_claim(Origin::signed(2), BOB, (CLASS_ID, TOKEN_ID)),
             Error::<Test>::NoPermission
         );
 
         assert_eq!(
-            GamePowerWallet::next_claim_id(),
+            GamePowerMarket::next_claim_id(),
             0,
             "The next claim id is incorrect"
         );
         assert_eq!(
-            GamePowerWallet::all_claims().len(),
+            GamePowerMarket::all_claims().len(),
             0,
             "Claim not added to all"
         );
         assert_eq!(
-            GamePowerWallet::open_claims(BOB, 0).is_some(),
+            GamePowerMarket::open_claims(BOB, 0).is_some(),
             false,
             "Claim should not be added"
         );
@@ -285,38 +265,33 @@ fn buy_should_work() {
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
         // There should be no listing
-        assert_eq!(GamePowerWallet::listings(0), None, "Listing was not empty");
+        assert_eq!(GamePowerMarket::listings(0), None, "Listing was not empty");
 
         // Create a valid listing
-        assert_ok!(GamePowerWallet::list(
+        assert_ok!(GamePowerMarket::list(
             Origin::signed(1),
             (CLASS_ID, TOKEN_ID),
             100
         ));
 
         assert_eq!(
-            GamePowerWallet::all_listings().len(),
+            GamePowerMarket::all_listings().len(),
             1,
             "Listing not created"
         );
         // Make a valid purchase
-        assert_ok!(GamePowerWallet::buy(Origin::signed(2), LISTING_ID));
+        assert_ok!(GamePowerMarket::buy(Origin::signed(2), LISTING_ID));
         assert_eq!(
-            GamePowerWallet::listing_count(),
-            0,
-            "The total number of listings is incorrect"
-        );
-        assert_eq!(
-            GamePowerWallet::all_listings().len(),
+            GamePowerMarket::all_listings().len(),
             0,
             "Listing not removed from all!"
         );
         assert_eq!(
-            GamePowerWallet::listings_by_owner(1),
+            GamePowerMarket::listings_by_owner(1),
             Some(vec![]),
             "Listing by owner not removed"
         );
-        assert_eq!(GamePowerWallet::listings(0), None, "Listing not removed");
+        assert_eq!(GamePowerMarket::listings(0), None, "Listing not removed");
 
         // Check Balances
         assert_eq!(Balances::free_balance(ALICE), 1000000 + 100);
@@ -332,7 +307,7 @@ fn buy_should_fail() {
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
         // Create a valid listing
-        assert_ok!(GamePowerWallet::list(
+        assert_ok!(GamePowerMarket::list(
             Origin::signed(1),
             (CLASS_ID, TOKEN_ID),
             100
@@ -340,27 +315,22 @@ fn buy_should_fail() {
 
         // Try to buy a listing not being sold
         assert_noop!(
-            GamePowerWallet::buy(Origin::signed(2), LISTING_ID_NOT_EXIST),
+            GamePowerMarket::buy(Origin::signed(2), LISTING_ID_NOT_EXIST),
             Error::<Test>::ListingNotFound
         );
 
         assert_eq!(
-            GamePowerWallet::listing_count(),
-            1,
-            "The total number of listings is incorrect"
-        );
-        assert_eq!(
-            GamePowerWallet::all_listings().len(),
+            GamePowerMarket::all_listings().len(),
             1,
             "Listing should not be removed from all!"
         );
         assert_eq!(
-            GamePowerWallet::listings_by_owner(ALICE),
+            GamePowerMarket::listings_by_owner(ALICE),
             Some(vec![0]),
             "Listing by owner should not be removed"
         );
         assert_eq!(
-            GamePowerWallet::listings(0).is_some(),
+            GamePowerMarket::listings(0).is_some(),
             true,
             "Listing should not be removed"
         );
@@ -379,14 +349,14 @@ fn emote_should_work() {
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
         // Post a valid emote
-        assert_ok!(GamePowerWallet::emote(
+        assert_ok!(GamePowerMarket::emote(
             Origin::signed(2),
             (CLASS_ID, TOKEN_ID),
             "fish".as_bytes().to_vec()
         ));
 
         assert_eq!(
-            GamePowerWallet::emotes((CLASS_ID, TOKEN_ID), BOB).len(),
+            GamePowerMarket::emotes((CLASS_ID, TOKEN_ID), BOB).len(),
             1,
             "Emote should be added"
         );
@@ -402,7 +372,7 @@ fn emote_should_fail() {
 
         // Post an invalid emote for a class that doesn't exist
         assert_noop!(
-            GamePowerWallet::emote(
+            GamePowerMarket::emote(
                 Origin::signed(2),
                 (CLASS_ID, TOKEN_ID),
                 "fasdfasdfaish".as_bytes().to_vec()
@@ -411,7 +381,7 @@ fn emote_should_fail() {
         );
 
         assert_eq!(
-            GamePowerWallet::emotes((CLASS_ID, TOKEN_ID), BOB).len(),
+            GamePowerMarket::emotes((CLASS_ID, TOKEN_ID), BOB).len(),
             0,
             "Emote should not be added"
         );
@@ -427,7 +397,7 @@ fn emote_should_fail_for_invalid_token() {
 
         // Post an invalid emote for a class that doesn't exist
         assert_noop!(
-            GamePowerWallet::emote(
+            GamePowerMarket::emote(
                 Origin::signed(2),
                 (CLASS_ID_NOT_EXIST, TOKEN_ID),
                 "fish".as_bytes().to_vec()
@@ -445,7 +415,7 @@ fn locked_asset_should_fail() {
         assert_ok!(OrmlNFT::mint(&ALICE, CLASS_ID, vec![1], ()));
 
         // Make a valid claim
-        assert_ok!(GamePowerWallet::create_claim(
+        assert_ok!(GamePowerMarket::create_claim(
             Origin::signed(1),
             BOB,
             (CLASS_ID, TOKEN_ID)
@@ -453,15 +423,15 @@ fn locked_asset_should_fail() {
 
         // All calls that require an unlocked token should give no permission error
         assert_noop!(
-            GamePowerWallet::burn(Origin::signed(1), (CLASS_ID, TOKEN_ID)),
+            GamePowerMarket::burn(Origin::signed(1), (CLASS_ID, TOKEN_ID)),
             Error::<Test>::NoPermission
         );
         assert_noop!(
-            GamePowerWallet::transfer(Origin::signed(1), BOB, (CLASS_ID, TOKEN_ID)),
+            GamePowerMarket::transfer(Origin::signed(1), BOB, (CLASS_ID, TOKEN_ID)),
             Error::<Test>::NoPermission
         );
         assert_noop!(
-            GamePowerWallet::list(Origin::signed(1), (CLASS_ID, TOKEN_ID), 100),
+            GamePowerMarket::list(Origin::signed(1), (CLASS_ID, TOKEN_ID), 100),
             Error::<Test>::NoPermission
         );
     });

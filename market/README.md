@@ -6,6 +6,7 @@
 ## Getting Started
 
 # 1. Install ORML
+
 The GamePower Wallet pallet requires the ORML NFT crate to be installed and configured into your runtime.
 
 https://github.com/open-web3-stack/open-runtime-module-library/tree/master/nft
@@ -51,7 +52,9 @@ construct_runtime!(
 	}
 );
 ```
+
 # 2. Install GamePower Wallet Pallet
+
 ### Importing the GamePower Wallet pallet
 
 `runtime/Cargo.toml`
@@ -86,9 +89,9 @@ parameter_types! {
 
 impl gamepower_wallet::Config for Runtime {
 	type Event = Event;
-	type Transfer = GamePowerWallet;
-	type Burn = GamePowerWallet;
-	type Claim = GamePowerWallet;
+	type Transfer = GamePowerMarket;
+	type Burn = GamePowerMarket;
+	type Claim = GamePowerMarket;
 	type AllowTransfer = AllowTransfer;
 	type AllowBurn = AllowBurn;
 	type AllowEscrow = AllowEscrow;
@@ -107,7 +110,7 @@ construct_runtime!(
         -- SNIP --
 
         // Add this code
-        GamePowerWallet: gamepower_wallet::{Module, Call, Storage, Event<T>},
+        GamePowerMarket: gamepower_wallet::{Module, Call, Storage, Event<T>},
 	}
 );
 ```
@@ -130,6 +133,6 @@ cargo doc --open --package gamepower-wallet
 cargo +nightly build --release
 ```
 
-
 ## GamePower Wallet Example
+
 If you would like to learn how to integrate your existing pallet into the GamePower Wallet visit the [gamepower-wallet-template](https://github.com/GamePowerNetwork/gamepower-wallet-template) repo.

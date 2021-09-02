@@ -3,7 +3,7 @@ cargo-features = ["resolver"]
 [workspace]
 members = [
 	"traits",
-	"wallet",
+	"market",
 	"primitives",
 ]
 resolver = "2"

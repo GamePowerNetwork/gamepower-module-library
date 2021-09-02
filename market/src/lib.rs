@@ -67,18 +67,6 @@ pub struct Claim<ClassIdOf, TokenIdOf, AccountId> {
     pub asset: (ClassIdOf, TokenIdOf),
 }
 
-#[derive(Encode, Decode, Default, Clone, RuntimeDebug, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-/// Order data
-pub struct Order<ListingOf, AccountId, BlockNumber> {
-    /// order listing
-    pub listing: ListingOf,
-    /// order buyer
-    pub buyer: AccountId,
-    /// genesis block
-    pub block: BlockNumber,
-}
-
 /// The module configuration trait.
 pub trait Config: system::Config + orml_nft::Config {
     type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
@@ -111,14 +99,11 @@ pub type ListingOf<T> =
     Listing<ClassIdOf<T>, TokenIdOf<T>, <T as system::Config>::AccountId, BalanceOf<T>>;
 /// Claim Data
 pub type ClaimOf<T> = Claim<ClassIdOf<T>, TokenIdOf<T>, <T as system::Config>::AccountId>;
-/// Order Data
-pub type OrderOf<T> =
-    Order<ListingOf<T>, <T as system::Config>::AccountId, <T as system::Config>::BlockNumber>;
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as system::Config>::AccountId>>::Balance;
 
 decl_storage! {
-  trait Store for Module<T: Config> as GamePowerWallet {
+  trait Store for Module<T: Config> as GamePowerMarket {
 
     /// Get a listing by the listing_id
     pub Listings get(fn listings):
@@ -130,13 +115,6 @@ decl_storage! {
     pub AllListings get(fn all_listings): Vec<(ClassIdOf<T>, TokenIdOf<T>)>;
     /// Get the next listing id
     pub NextListingId get(fn next_listing_id): ListingId;
-    /// A fast and simple count of all current listings
-    pub ListingCount get(fn listing_count): u64;
-    /// A count of all orders made through the wallet
-    pub OrderCount: u64;
-    /// A history of orders for an asset
-    pub OrderHistory get(fn order_history):
-        map hasher(twox_64_concat) (ClassIdOf<T>, TokenIdOf<T>) => Option<OrderOf<T>>;
     /// Get one or more claims by AccountId or a single claim including the claim_id
     pub OpenClaims get(fn open_claims):
         double_map hasher(blake2_128_concat) T::AccountId, hasher(twox_64_concat) ClaimId => Option<ClaimOf<T>>;
@@ -159,23 +137,23 @@ decl_event!(
     Balance = BalanceOf<T>,
   {
     /// Asset successfully transferred through the wallet [from, to, classId, tokenId]
-    WalletAssetTransferred(AccountId, AccountId, ClassId, TokenId),
+    MarketAssetTransferred(AccountId, AccountId, ClassId, TokenId),
     /// Asset successfully burned through the wallet [owner, classId, tokenId]
-    WalletAssetBurned(AccountId, ClassId, TokenId),
+    MarketAssetBurned(AccountId, ClassId, TokenId),
     /// Asset successfully listed through the wallet [owner, price, listingId,, classId, tokenId]
-    WalletAssetListed(AccountId, Balance, ListingId, ClassId, TokenId),
+    MarketAssetListed(AccountId, Balance, ListingId, ClassId, TokenId),
     /// Asset successfully unlisted through the wallet [owner, listingId, classId, tokenId]
-    WalletAssetUnlisted(AccountId, ListingId, ClassId, TokenId),
+    MarketAssetUnlisted(AccountId, ListingId, ClassId, TokenId),
     /// Asset successfully purchased through the wallet [seller, buyer, classId, tokenId]
-    WalletAssetPurchased(AccountId, AccountId, ClassId, TokenId),
+    MarketAssetPurchased(AccountId, AccountId, ClassId, TokenId),
     /// Asset successfully purchased through the wallet [receiver, classId, tokenId]
-    WalletAssetClaimed(AccountId, ClassId, TokenId),
+    MarketAssetClaimed(AccountId, ClassId, TokenId),
     /// Asset claim created [creator, receiver, classId, tokenId]
-    WalletClaimCreated(AccountId, AccountId, ClassId, TokenId),
+    MarketClaimCreated(AccountId, AccountId, ClassId, TokenId),
     /// Asset buy successful [seller, buyer, listingId, price]
-    WalletAssetBuySuccess(AccountId, AccountId, ListingId, Balance),
+    MarketAssetBuySuccess(AccountId, AccountId, ListingId, Balance),
     /// New Emote posted [poster, classId, tokenId, emote]
-    WalletAssetEmotePosted(AccountId, ClassId, TokenId, Vec<u8>),
+    MarketAssetEmotePosted(AccountId, ClassId, TokenId, Vec<u8>),
   }
 );
 
@@ -321,14 +299,6 @@ decl_module! {
                 price,
             };
 
-            // Increment Listing count
-            ListingCount::mutate(|id| -> Result<u64, DispatchError> {
-                let current_count = *id;
-                *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableListingId)?;
-
-                Ok(current_count)
-            }).ok();
-
             // Add listing to storage
             Listings::<T>::insert(listing_id, listing);
 
@@ -352,7 +322,7 @@ decl_module! {
             // Add asset to all listings
             AllListings::<T>::append(&asset);
 
-            Self::deposit_event(RawEvent::WalletAssetListed(sender, price, listing_id, asset.0, asset.1));
+            Self::deposit_event(RawEvent::MarketAssetListed(sender, price, listing_id, asset.0, asset.1));
 
             Ok(())
         }
@@ -379,7 +349,7 @@ decl_module! {
                 let is_unlisted = Self::do_unlist(&sender, data.clone(), false)?;
                 ensure!(is_unlisted, Error::<T>::UnlistingFailed);
 
-                Self::deposit_event(RawEvent::WalletAssetUnlisted(sender, listing_id, data.asset.0, data.asset.1));
+                Self::deposit_event(RawEvent::MarketAssetUnlisted(sender, listing_id, data.asset.0, data.asset.1));
 
                 Ok(())
             })?;
@@ -421,29 +391,8 @@ decl_module! {
                 let escrow_account: T::AccountId = Self::get_escrow_account();
                 Self::do_transfer(&escrow_account, &sender, data.asset).ok();
 
-                // Increment Order count
-                OrderCount::mutate(|id| -> Result<u64, DispatchError> {
-                    let current_count = *id;
-                    *id = id.checked_add(One::one()).ok_or(Error::<T>::NoAvailableOrderId)?;
-
-                    Ok(current_count)
-                }).ok();
-
-                // Get the current block for this order
-                let block_number = <system::Module<T>>::block_number();
-
-                // Create order data
-                let order = Order {
-                    listing: data.clone(),
-                    buyer: sender.clone(),
-                    block: block_number,
-                };
-
-                // Save order history
-                OrderHistory::<T>::insert(order.listing.asset, order);
-
                 Self::deposit_event(
-                    RawEvent::WalletAssetBuySuccess(
+                    RawEvent::MarketAssetBuySuccess(
                         data.seller.clone(),
                         sender,
                         data.id,
@@ -490,7 +439,7 @@ decl_module! {
             // Add emote to storage
             Emotes::<T>::insert(asset, &sender, emotes_data);
 
-            Self::deposit_event(RawEvent::WalletAssetEmotePosted(sender, asset.0, asset.1, emoji));
+            Self::deposit_event(RawEvent::MarketAssetEmotePosted(sender, asset.0, asset.1, emoji));
 
             Ok(())
         }
@@ -532,7 +481,7 @@ decl_module! {
                 // Remove the open claim
                 OpenClaims::<T>::remove(&sender, claim_id);
 
-                Self::deposit_event(RawEvent::WalletAssetClaimed(sender, data.asset.0, data.asset.1));
+                Self::deposit_event(RawEvent::MarketAssetClaimed(sender, data.asset.0, data.asset.1));
 
                 Ok(())
             })?;
@@ -564,7 +513,7 @@ decl_module! {
             let claim_created = Self::do_create_claim(&sender, &receiver, asset)?;
             ensure!(claim_created, Error::<T>::ClaimCreateFailed);
 
-            Self::deposit_event(RawEvent::WalletClaimCreated(sender, receiver, asset.0, asset.1));
+            Self::deposit_event(RawEvent::MarketClaimCreated(sender, receiver, asset.0, asset.1));
 
             Ok(())
         }
@@ -578,7 +527,7 @@ impl<T: Config> Module<T> {
         owner: &T::AccountId,
         asset: &(ClassIdOf<T>, TokenIdOf<T>),
     ) -> Result<bool, DispatchError> {
-        Ok(AssetModule::<T>::is_owner(&owner, *asset))
+        Ok(AssetModule::<T>::is_owner(owner, *asset))
     }
 
     fn do_transfer(
@@ -586,7 +535,7 @@ impl<T: Config> Module<T> {
         to: &T::AccountId,
         asset: (ClassIdOf<T>, TokenIdOf<T>),
     ) -> Result<bool, DispatchError> {
-        AssetModule::<T>::transfer(&from, &to, asset).ok();
+        AssetModule::<T>::transfer(from, to, asset).ok();
         Ok(true)
     }
 
@@ -607,7 +556,7 @@ impl<T: Config> Module<T> {
     }
 
     pub fn is_locked(asset: &(ClassIdOf<T>, TokenIdOf<T>)) -> bool {
-        Self::is_listed(&asset) || Self::is_claiming(&asset)
+        Self::is_listed(asset) || Self::is_claiming(asset)
     }
 
     fn do_unlist(
@@ -620,19 +569,8 @@ impl<T: Config> Module<T> {
 
         // Transfer out of escrow
         if !is_buy {
-            Self::do_transfer(&escrow_account, &sender, listing_data.asset).ok();
+            Self::do_transfer(&escrow_account, sender, listing_data.asset).ok();
         }
-
-        // Decrease Listing count
-        ListingCount::mutate(|id| -> Result<u64, DispatchError> {
-            let current_count = *id;
-            *id = id
-                .checked_sub(One::one())
-                .ok_or(Error::<T>::NoAvailableListingId)?;
-
-            Ok(current_count)
-        })
-        .ok();
 
         // Remove the asset from all listings
         AllListings::<T>::try_mutate(|asset_ids| -> DispatchResult {
@@ -674,7 +612,7 @@ impl<T: Config> Module<T> {
         let claim_account: T::AccountId = Self::get_claim_account();
 
         // Transfer asset into the claim account
-        Self::do_transfer(&owner, &claim_account, asset).ok();
+        Self::do_transfer(owner, &claim_account, asset).ok();
 
         // Create claim data
         let claim = Claim {
@@ -707,8 +645,8 @@ impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Modu
         to: &T::AccountId,
         asset: (T::ClassId, T::TokenId),
     ) -> DispatchResult {
-        Self::do_transfer(&from, &to, asset)?;
-        Module::<T>::deposit_event(RawEvent::WalletAssetTransferred(
+        Self::do_transfer(from, to, asset)?;
+        Module::<T>::deposit_event(RawEvent::MarketAssetTransferred(
             from.clone(),
             to.clone(),
             asset.0,
@@ -721,8 +659,8 @@ impl<T: Config> OnTransferHandler<T::AccountId, T::ClassId, T::TokenId> for Modu
 // Implement OnBurnHandler
 impl<T: Config> OnBurnHandler<T::AccountId, T::ClassId, T::TokenId> for Module<T> {
     fn burn(owner: &T::AccountId, asset: (T::ClassId, T::TokenId)) -> DispatchResult {
-        AssetModule::<T>::burn(&owner, asset)?;
-        Module::<T>::deposit_event(RawEvent::WalletAssetBurned(owner.clone(), asset.0, asset.1));
+        AssetModule::<T>::burn(owner, asset)?;
+        Module::<T>::deposit_event(RawEvent::MarketAssetBurned(owner.clone(), asset.0, asset.1));
         Ok(())
     }
 }

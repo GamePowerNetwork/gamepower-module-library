@@ -2,14 +2,12 @@
 
 use super::*;
 
-use crate as gamepower_wallet;
+use crate as gamepower_market;
 use balances;
 use frame_support::{
     parameter_types,
-    traits::{Filter, InstanceFilter},
 };
 use frame_system as system;
-use gamepower_primitives::{WalletAssetData, WalletClassData};
 use sp_core::H256;
 use sp_runtime::ModuleId;
 use sp_runtime::{
@@ -30,7 +28,7 @@ frame_support::construct_runtime!(
       System: frame_system::{Module, Call, Config, Storage, Event<T>},
       Balances: balances::{Module, Call, Storage, Config<T>, Event<T>},
       OrmlNFT: orml_nft::{Module ,Storage},
-      GamePowerWallet: gamepower_wallet::{Module, Call, Storage, Event<T>},
+      GamePowerMarket: gamepower_market::{Module, Call, Storage, Event<T>},
     }
 );
 
@@ -90,20 +88,20 @@ parameter_types! {
     pub AllowBurn: bool = true;
     pub AllowEscrow: bool = true;
     pub AllowClaim: bool = true;
-    pub const WalletModuleId: ModuleId = ModuleId(*b"gpwallet");
+    pub const MarketModuleId: ModuleId = ModuleId(*b"gpmarket");
 }
 
-impl gamepower_wallet::Config for Test {
+impl gamepower_market::Config for Test {
     type Event = Event;
-    type Transfer = GamePowerWallet;
-    type Burn = GamePowerWallet;
-    type Claim = GamePowerWallet;
+    type Transfer = GamePowerMarket;
+    type Burn = GamePowerMarket;
+    type Claim = GamePowerMarket;
     type AllowTransfer = AllowTransfer;
     type AllowBurn = AllowBurn;
     type AllowEscrow = AllowEscrow;
     type AllowClaim = AllowClaim;
     type Currency = Balances;
-    type ModuleId = WalletModuleId;
+    type ModuleId = MarketModuleId;
 }
 
 impl orml_nft::Config for Test {

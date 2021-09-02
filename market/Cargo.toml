@@ -1,7 +1,7 @@
 [package]
-name = "gamepower-wallet"
-description = "Pallet that allows interfacing with the GamePower NFT Wallet"
-repository = "https://github.com/GamePowerNetwork/gamepower-module-library/tree/main/wallet"
+name = "gamepower-market"
+description = "Pallet that allows interfacing with the GamePower NFT Marketplace"
+repository = "https://github.com/GamePowerNetwork/gamepower-module-library/tree/main/market"
 license = "Apache-2.0"
 version = "0.0.1"
 authors = ["GamePower Developers <dev@gamepower.network>"]

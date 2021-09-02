@@ -1,13 +1,15 @@
 # Wallet Integration Example
 
-
 ## Getting Started
+
 ---
+
 This pallet provides an example of how to integrate a pallet with the GamePower Wallet Pallet.
 
-
 ## Basic Configuration
+
 ---
+
 `runtime/src/lib.rs`
 
 ```
@@ -26,7 +28,7 @@ construct_runtime!(
         -- SNIP --
 
         // Add this code
-        GamePowerWalletIntegration: gamepower_wallet_integration::{Module, Call, Storage, Event<T>},
+        GamePowerMarketIntegration: gamepower_wallet_integration::{Module, Call, Storage, Event<T>},
 	}
 );
 ```
